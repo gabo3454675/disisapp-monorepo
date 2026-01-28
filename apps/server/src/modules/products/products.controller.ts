@@ -1,0 +1,107 @@
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseGuards,
+  ParseIntPipe,
+  UploadedFile,
+  UseInterceptors,
+  BadRequestException,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { CacheInterceptor, CacheTTL } from '@nestjs/cache-manager';
+import { ProductsService } from './products.service';
+import { CreateProductDto } from './dto/create-product.dto';
+import { UpdateProductDto } from './dto/update-product.dto';
+import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
+import { OrganizationGuard } from '@/common/guards/organization.guard';
+import { ActiveOrganization } from '@/common/decorators/active-organization.decorator';
+
+@Controller('products')
+@UseGuards(JwtAuthGuard, OrganizationGuard)
+export class ProductsController {
+  constructor(private readonly productsService: ProductsService) {}
+
+  @Post()
+  @UseInterceptors(FileInterceptor('image'))
+  async create(
+    @Body() createProductDto: CreateProductDto,
+    @ActiveOrganization() organizationId: number,
+    @UploadedFile() image?: Express.Multer.File,
+  ) {
+    let imageUrl: string | undefined;
+
+    if (image) {
+      imageUrl = await this.productsService.uploadImage(image);
+    }
+
+    return this.productsService.create(createProductDto, organizationId, imageUrl);
+  }
+
+  @Get()
+  @UseInterceptors(CacheInterceptor)
+  @CacheTTL(60)
+  findAll(@ActiveOrganization() organizationId: number) {
+    return this.productsService.findAll(organizationId);
+  }
+
+  @Get('barcode/:barcode')
+  findByBarcode(
+    @Param('barcode') barcode: string,
+    @ActiveOrganization() organizationId: number,
+  ) {
+    return this.productsService.findByBarcode(barcode, organizationId);
+  }
+
+  @Get(':id')
+  findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @ActiveOrganization() organizationId: number,
+  ) {
+    return this.productsService.findOne(id, organizationId);
+  }
+
+  @Patch(':id')
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updateProductDto: UpdateProductDto,
+    @ActiveOrganization() organizationId: number,
+  ) {
+    return this.productsService.update(id, updateProductDto, organizationId);
+  }
+
+  @Delete(':id')
+  remove(
+    @Param('id', ParseIntPipe) id: number,
+    @ActiveOrganization() organizationId: number,
+  ) {
+    return this.productsService.remove(id, organizationId);
+  }
+
+  @Post('import')
+  @UseInterceptors(FileInterceptor('file'))
+  async importFromExcel(
+    @UploadedFile() file: Express.Multer.File,
+    @ActiveOrganization() organizationId: number,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Archivo no proporcionado');
+    }
+
+    // Validar tipo de archivo
+    const allowedMimeTypes = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+      'application/vnd.ms-excel', // .xls
+    ];
+
+    if (!allowedMimeTypes.includes(file.mimetype)) {
+      throw new BadRequestException('El archivo debe ser un Excel (.xlsx o .xls)');
+    }
+
+    return this.productsService.importFromExcel(file, organizationId);
+  }
+}

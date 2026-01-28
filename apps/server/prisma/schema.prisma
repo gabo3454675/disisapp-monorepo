@@ -1,0 +1,381 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ------------------------------------------
+// 1. GESTIÓN DE IDENTIDAD Y ACCESO
+// ------------------------------------------
+
+model User {
+  id            Int             @id @default(autoincrement())
+  email         String          @unique
+  passwordHash  String
+  fullName      String?
+  avatarUrl     String?
+  isSuperAdmin  Boolean         @default(false) // Solo el Super Admin puede crear organizaciones
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  // Relaciones
+  memberships   CompanyMember[] // En qué empresas trabaja (legacy)
+  organizationMemberships Member[] // En qué organizaciones trabaja (SaaS)
+  createdInvoices Invoice[]     // Facturas que vendió
+  uploadedDocs    Document[]    // Archivos que subió
+  invitations   Invitation[]    // Invitaciones enviadas
+
+  @@index([isSuperAdmin])
+  @@map("users")
+}
+
+model Company {
+  id            Int             @id @default(autoincrement())
+  name          String
+  taxId         String          // RIF, NIT, RUT
+  logoUrl       String?
+  currency      String          @default("USD")
+  address       String?
+  isActive      Boolean         @default(true)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  // Relaciones (Legacy - mantener para compatibilidad)
+  members          CompanyMember[]
+  products         Product[]
+  invoices         Invoice[]
+  documents        Document[]
+  customers        Customer[]
+  suppliers        Supplier[]
+  expenseCategories ExpenseCategory[]
+  expenses         Expense[]
+
+  @@map("companies")
+}
+
+// Tabla Pivote: Un usuario puede tener distintos roles en distintas empresas
+model CompanyMember {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  companyId Int
+  role      Role     @default(SELLER) // OWNER, ADMIN, SELLER, WAREHOUSE
+  status    String   @default("ACTIVE") // ACTIVE, SUSPENDED
+  joinedAt  DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id])
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@unique([userId, companyId]) // Evita duplicados
+  @@index([userId])
+  @@index([companyId])
+  @@index([status])
+  @@map("company_members")
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  SELLER
+  WAREHOUSE
+}
+
+enum Plan {
+  FREE
+  BASIC
+  PREMIUM
+  ENTERPRISE
+}
+
+// ------------------------------------------
+// MODELO ORGANIZATION (Multi-Tenant SaaS)
+// ------------------------------------------
+
+model Organization {
+  id            Int             @id @default(autoincrement())
+  nombre        String          // Nombre de la organización
+  slug          String          @unique // Slug único para URLs (ej: "mi-empresa")
+  plan          Plan            @default(FREE)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  // Relaciones
+  members          Member[]
+  products         Product[]
+  invoices         Invoice[]
+  documents        Document[]
+  customers        Customer[]
+  suppliers        Supplier[]
+  expenseCategories ExpenseCategory[]
+  expenses         Expense[]
+  invitations      Invitation[] // Invitaciones para unirse a la organización
+
+  @@index([slug])
+  @@map("organizations")
+}
+
+// ------------------------------------------
+// MODELO INVITATION (Sistema de Invitaciones)
+// ------------------------------------------
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  CANCELLED
+}
+
+model Invitation {
+  id            Int              @id @default(autoincrement())
+  email         String           // Email del usuario invitado
+  token         String           @unique // Token único para aceptar la invitación
+  role          Role             @default(SELLER) // Rol que tendrá el usuario en la organización
+  organizationId Int             // Organización a la que se invita
+  invitedBy     Int              // Usuario que envió la invitación
+  expiresAt     DateTime         // Fecha de expiración de la invitación
+  status        InvitationStatus @default(PENDING) // Estado de la invitación
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  organization  Organization     @relation(fields: [organizationId], references: [id])
+  inviter       User             @relation(fields: [invitedBy], references: [id])
+
+  @@index([email])
+  @@index([token])
+  @@index([organizationId])
+  @@index([status])
+  @@index([expiresAt])
+  @@map("invitations")
+}
+
+// Tabla Pivote: Un usuario puede tener distintos roles en distintas organizaciones
+model Member {
+  id             Int      @id @default(autoincrement())
+  userId         Int
+  organizationId Int
+  role           Role     @default(SELLER) // OWNER, ADMIN, SELLER, WAREHOUSE
+  status         String   @default("ACTIVE") // ACTIVE, SUSPENDED
+  joinedAt       DateTime @default(now())
+
+  user         User         @relation(fields: [userId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([userId, organizationId]) // Evita duplicados
+  @@index([userId])
+  @@index([organizationId])
+  @@index([status])
+  @@map("members")
+}
+
+// ------------------------------------------
+// 2. INVENTARIO Y PRODUCTOS
+// ------------------------------------------
+
+model Product {
+  id            Int      @id @default(autoincrement())
+  companyId     Int      // Legacy: mantener para compatibilidad
+  organizationId Int?    // Nueva relación Multi-Tenant
+  name          String
+  sku           String?
+  barcode       String?  // Para el escáner
+  costPrice     Decimal  @default(0) @db.Decimal(10, 2)
+  salePrice     Decimal  @default(0) @db.Decimal(10, 2)
+  stock         Int      @default(0)
+  imageUrl      String?
+  minStock      Int      @default(5) // Alerta de stock bajo
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  company       Company       @relation(fields: [companyId], references: [id])
+  organization  Organization? @relation(fields: [organizationId], references: [id])
+  invoiceItems  InvoiceItem[]
+
+  @@index([companyId]) // Índice para búsquedas rápidas por empresa (legacy)
+  @@index([organizationId]) // Índice para búsquedas rápidas por organización
+  @@index([barcode])   // Índice para el escáner
+  @@map("products")
+}
+
+// ------------------------------------------
+// 3. FACTURACIÓN Y TERCEROS
+// ------------------------------------------
+
+model Customer {
+  id            Int      @id @default(autoincrement())
+  companyId     Int      // Legacy: mantener para compatibilidad
+  organizationId Int?    // Nueva relación Multi-Tenant
+  name          String
+  taxId         String?  // Documento de identidad del cliente
+  email         String?
+  phone         String?
+  address       String?
+  createdAt     DateTime @default(now())
+
+  company       Company       @relation(fields: [companyId], references: [id])
+  organization  Organization? @relation(fields: [organizationId], references: [id])
+  invoices      Invoice[]
+
+  @@index([companyId])
+  @@index([organizationId])
+  @@index([name])
+  @@index([taxId])
+  @@map("customers")
+}
+
+model Invoice {
+  id            Int           @id @default(autoincrement())
+  companyId     Int           // Legacy: mantener para compatibilidad
+  organizationId Int?         // Nueva relación Multi-Tenant
+  customerId    Int?
+  sellerId      Int           // El usuario que creó la factura
+  totalAmount   Decimal       @db.Decimal(15, 2)
+  status        InvoiceStatus @default(PAID)
+  paymentMethod String        @default("CASH") // CASH, ZELLE, CARD
+  notes         String?
+  pdfUrl        String?       // Link al PDF generado
+  publicToken   String?       @unique // Token UUID para acceso público a la factura
+  // Tracking de pagos desde link público
+  markedAsPaidByClient Boolean @default(false) // Si el cliente marcó como pagada desde el link
+  markedAsPaidAt       DateTime? // Cuándo el cliente marcó como pagada
+  markedAsPaidBy       String? // Nombre/email del cliente que marcó como pagada
+  viewCount            Int     @default(0) // Contador de veces que se abrió el link público
+  lastViewedAt        DateTime? // Última vez que se abrió el link
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  company       Company       @relation(fields: [companyId], references: [id])
+  organization  Organization? @relation(fields: [organizationId], references: [id])
+  customer      Customer?     @relation(fields: [customerId], references: [id])
+  seller        User          @relation(fields: [sellerId], references: [id])
+  items         InvoiceItem[]
+
+  @@index([companyId])
+  @@index([organizationId])
+  @@index([publicToken])
+  @@index([markedAsPaidByClient])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id        Int     @id @default(autoincrement())
+  invoiceId Int
+  productId Int
+  quantity  Int
+  unitPrice Decimal @db.Decimal(10, 2)
+  subtotal  Decimal @db.Decimal(10, 2)
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([invoiceId])
+  @@index([productId])
+  @@map("invoice_items")
+}
+
+enum InvoiceStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
+// ------------------------------------------
+// 4. GESTIÓN DE COMPRAS Y GASTOS (EGRESOS)
+// ------------------------------------------
+
+model Supplier {
+  id            Int      @id @default(autoincrement())
+  companyId     Int      // Legacy: mantener para compatibilidad
+  organizationId Int?    // Nueva relación Multi-Tenant
+  name          String
+  taxId         String?  // RIF, NIT, RUT del proveedor
+  email         String?
+  phone         String?
+  address       String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  company       Company       @relation(fields: [companyId], references: [id])
+  organization  Organization? @relation(fields: [organizationId], references: [id])
+  expenses      Expense[]
+
+  @@index([companyId])
+  @@index([organizationId])
+  @@index([name])
+  @@map("suppliers")
+}
+
+model ExpenseCategory {
+  id            Int      @id @default(autoincrement())
+  companyId     Int      // Legacy: mantener para compatibilidad
+  organizationId Int?    // Nueva relación Multi-Tenant
+  name          String   // "Inventario", "Servicios", "Nómina", "Mantenimiento", etc.
+  description   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  company       Company       @relation(fields: [companyId], references: [id])
+  organization  Organization? @relation(fields: [organizationId], references: [id])
+  expenses      Expense[]
+
+  @@index([companyId])
+  @@index([organizationId])
+  @@map("expense_categories")
+}
+
+enum ExpenseStatus {
+  PENDING
+  PAID
+}
+
+model Expense {
+  id              Int            @id @default(autoincrement())
+  companyId       Int            // Legacy: mantener para compatibilidad
+  organizationId  Int?           // Nueva relación Multi-Tenant
+  date            DateTime       @default(now())
+  amount          Decimal        @db.Decimal(15, 2)
+  description     String
+  referenceNumber String?        // Número de factura del proveedor
+  status          ExpenseStatus  @default(PENDING)
+  supplierId      Int?
+  categoryId      Int
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  company       Company         @relation(fields: [companyId], references: [id])
+  organization  Organization?   @relation(fields: [organizationId], references: [id])
+  supplier      Supplier?       @relation(fields: [supplierId], references: [id])
+  category      ExpenseCategory @relation(fields: [categoryId], references: [id])
+
+  @@index([companyId])
+  @@index([organizationId])
+  @@index([date])
+  @@index([categoryId])
+  @@map("expenses")
+}
+
+// ------------------------------------------
+// 5. GESTIÓN DOCUMENTAL
+// ------------------------------------------
+
+model Document {
+  id            Int      @id @default(autoincrement())
+  companyId     Int      // Legacy: mantener para compatibilidad
+  organizationId Int?    // Nueva relación Multi-Tenant
+  uploadedBy    Int
+  entityType    String   // 'INVOICE', 'EXPENSE', 'PRODUCT'
+  entityId      Int?     // ID de la factura o producto asociado
+  fileUrl       String
+  fileType      String   // 'application/pdf', 'image/jpeg'
+  createdAt     DateTime @default(now())
+
+  company       Company       @relation(fields: [companyId], references: [id])
+  organization  Organization? @relation(fields: [organizationId], references: [id])
+  user          User          @relation(fields: [uploadedBy], references: [id])
+
+  @@index([companyId])
+  @@index([organizationId])
+  @@index([entityType, entityId])
+  @@map("documents")
+}
