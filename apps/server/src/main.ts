@@ -27,8 +27,17 @@ async function bootstrap() {
   // En desarrollo, acepta desde localhost
   const allowedOrigins: string[] = [];
   
+  // Dominios de producción siempre permitidos
+  const productionDomains = [
+    'https://disisapp.com',
+    'https://www.disisapp.com',
+  ];
+  
   if (nodeEnv === 'production') {
-    // En producción, solo aceptar desde el dominio configurado
+    // Agregar dominios de producción
+    allowedOrigins.push(...productionDomains);
+    
+    // En producción, también aceptar desde el dominio configurado
     if (frontendUrl) {
       // Agregar el dominio principal
       allowedOrigins.push(frontendUrl);
@@ -43,7 +52,13 @@ async function bootstrap() {
     }
   } else {
     // En desarrollo, permitir localhost
-    allowedOrigins.push('http://localhost:3000', 'http://localhost:3002');
+    allowedOrigins.push(
+      'http://localhost:3000',
+      'http://localhost:3001',
+      
+    );
+    // También permitir dominios de producción en desarrollo para testing
+    allowedOrigins.push(...productionDomains);
   }
 
   app.enableCors({
