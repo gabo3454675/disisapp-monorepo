@@ -82,9 +82,9 @@ export class ProductsController {
     return this.productsService.remove(id, organizationId);
   }
 
-  @Post('import')
+  @Post('upload-excel')
   @UseInterceptors(FileInterceptor('file'))
-  async importFromExcel(
+  async uploadExcel(
     @UploadedFile() file: Express.Multer.File,
     @ActiveOrganization() organizationId: number,
   ) {
@@ -96,10 +96,21 @@ export class ProductsController {
     const allowedMimeTypes = [
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
       'application/vnd.ms-excel', // .xls
+      'application/octet-stream', // Algunos navegadores envían esto para .xlsx
     ];
 
-    if (!allowedMimeTypes.includes(file.mimetype)) {
-      throw new BadRequestException('El archivo debe ser un Excel (.xlsx o .xls)');
+    const allowedExtensions = ['.xlsx', '.xls'];
+    const fileExtension = file.originalname
+      .toLowerCase()
+      .substring(file.originalname.lastIndexOf('.'));
+
+    if (
+      !allowedMimeTypes.includes(file.mimetype) &&
+      !allowedExtensions.includes(fileExtension)
+    ) {
+      throw new BadRequestException(
+        'El archivo debe ser un Excel (.xlsx o .xls). Tipo recibido: ' + file.mimetype
+      );
     }
 
     return this.productsService.importFromExcel(file, organizationId);

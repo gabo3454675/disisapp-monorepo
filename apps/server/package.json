@@ -19,7 +19,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "prisma:seed": "ts-node prisma/seed.ts",
+    "prisma:seed": "tsx prisma/seed.ts",
+    "seed": "pnpm prisma:seed",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
@@ -46,7 +47,8 @@
     "reflect-metadata": "^0.1.14",
     "rxjs": "^7.8.1",
     "uuid": "^9.0.1",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "exceljs": "^4.4.0"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.2.1",
@@ -75,10 +77,11 @@
     "ts-loader": "^9.5.1",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
+    "tsx": "^4.7.0",
     "typescript": "^5.3.3"
   },
   "prisma": {
-    "seed": "ts-node prisma/seed.ts"
+    "seed": "tsx prisma/seed.ts"
   },
   "jest": {
     "moduleFileExtensions": [

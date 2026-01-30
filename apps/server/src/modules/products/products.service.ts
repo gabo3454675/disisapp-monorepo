@@ -9,7 +9,7 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { getCompanyIdFromOrganization } from '@/common/helpers/organization.helper';
 import { UploadService } from '@/common/services/upload.service';
-import * as XLSX from 'xlsx';
+import * as ExcelJS from 'exceljs';
 
 @Injectable()
 export class ProductsService {
@@ -158,73 +158,228 @@ export class ProductsService {
     return product;
   }
 
+  /**
+   * Importa productos desde un archivo Excel
+   * Usa transacciones de Prisma para velocidad y lógica de upsert inteligente
+   */
   async importFromExcel(file: Express.Multer.File, organizationId: number) {
     try {
-      // Leer el archivo Excel
-      const workbook = XLSX.read(file.buffer, { type: 'buffer' });
-      const firstSheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[firstSheetName];
-      const data = XLSX.utils.sheet_to_json(worksheet);
-
-      if (!data || data.length === 0) {
-        throw new BadRequestException('El archivo Excel está vacío');
+      // Validar que el archivo existe
+      if (!file || !file.buffer) {
+        throw new BadRequestException('Archivo no válido');
       }
 
-      const results = {
-        success: 0,
-        errors: [] as string[],
-        total: data.length,
+      // Leer el archivo Excel con exceljs
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(file.buffer);
+
+      // Obtener la primera hoja
+      const worksheet = workbook.worksheets[0];
+      if (!worksheet) {
+        throw new BadRequestException('El archivo Excel no contiene hojas');
+      }
+
+      // Validar que tiene filas
+      if (worksheet.rowCount < 2) {
+        throw new BadRequestException('El archivo Excel debe tener al menos una fila de datos (excluyendo encabezados)');
+      }
+
+      // Obtener encabezados de la primera fila
+      const headerRow = worksheet.getRow(1);
+      const headers: string[] = [];
+      headerRow.eachCell({ includeEmpty: false }, (cell) => {
+        headers.push(String(cell.value || '').trim().toLowerCase());
+      });
+
+      // Validar columnas requeridas (case-insensitive)
+      const requiredColumns = ['nombre', 'precio', 'stock'];
+      const columnMap: Record<string, number> = {};
+
+      // Buscar columnas (flexible con variaciones)
+      const columnVariations: Record<string, string[]> = {
+        nombre: ['nombre', 'name', 'producto', 'product', 'descripción', 'descripcion'],
+        precio: ['precio', 'price', 'precio de venta', 'sale price', 'venta'],
+        stock: ['stock', 'inventario', 'inventory', 'cantidad', 'quantity'],
+        sku: ['sku', 'código', 'codigo', 'code'],
+        codigoBarras: ['código de barras', 'codigo de barras', 'barcode', 'código barras', 'codigo barras'],
       };
 
-      // Procesar cada fila
-      for (let i = 0; i < data.length; i++) {
-        const row = data[i] as any;
-        
-        try {
-          // Mapear columnas (case-insensitive)
-          const nombre = row.Nombre || row.nombre || row.NOMBRE;
-          const precio = row.Precio || row.precio || row.PRECIO || row['Precio de Venta'];
-          const stock = row.Stock || row.stock || row.STOCK;
-          const codigoBarras = row.CodigoBarras || row.codigoBarras || row['Código de Barras'] || row['Codigo de Barras'] || row['CODIGO_BARRAS'];
-
-          if (!nombre) {
-            results.errors.push(`Fila ${i + 2}: El nombre es requerido`);
-            continue;
-          }
-
-          if (!precio || isNaN(parseFloat(precio))) {
-            results.errors.push(`Fila ${i + 2}: El precio debe ser un número válido`);
-            continue;
-          }
-
-          const productData: CreateProductDto = {
-            name: String(nombre).trim(),
-            salePrice: parseFloat(precio),
-            stock: stock ? parseInt(String(stock)) : 0,
-            barcode: codigoBarras ? String(codigoBarras).trim() : undefined,
-            costPrice: 0,
-            minStock: 5,
-          };
-
-          // Crear producto (el servicio maneja validaciones de SKU/barcode)
-          try {
-            await this.create(productData, organizationId);
-            results.success++;
-          } catch (error: any) {
-            if (error instanceof ConflictException) {
-              results.errors.push(`Fila ${i + 2}: ${error.message}`);
-            } else {
-              results.errors.push(`Fila ${i + 2}: Error al crear producto - ${error.message}`);
-            }
-          }
-        } catch (error: any) {
-          results.errors.push(`Fila ${i + 2}: Error de formato - ${error.message}`);
+      for (const [key, variations] of Object.entries(columnVariations)) {
+        const foundIndex = headers.findIndex((h) =>
+          variations.some((v) => h.includes(v) || v.includes(h))
+        );
+        if (foundIndex !== -1) {
+          columnMap[key] = foundIndex + 1; // ExcelJS usa índices basados en 1
         }
       }
 
-      return results;
+      // Validar columnas requeridas
+      if (!columnMap.nombre || !columnMap.precio || !columnMap.stock) {
+        throw new BadRequestException(
+          'El archivo Excel debe contener las columnas: Nombre, Precio, Stock. ' +
+          'Columnas opcionales: SKU, Código de Barras'
+        );
+      }
+
+      // Obtener companyId para la organización
+      const companyId = await getCompanyIdFromOrganization(this.prisma, organizationId);
+
+      // Contadores para el resumen
+      let created = 0;
+      let updated = 0;
+      const errors: string[] = [];
+
+      // Usar transacción de Prisma para velocidad y atomicidad
+      await this.prisma.$transaction(
+        async (tx) => {
+          // Procesar cada fila (empezando desde la fila 2, ya que la 1 es encabezados)
+          for (let rowNum = 2; rowNum <= worksheet.rowCount; rowNum++) {
+            const row = worksheet.getRow(rowNum);
+
+            try {
+              // Extraer valores de las celdas
+              const nombre = row.getCell(columnMap.nombre)?.value?.toString()?.trim();
+              const precioStr = row.getCell(columnMap.precio)?.value?.toString()?.trim();
+              const stockStr = row.getCell(columnMap.stock)?.value?.toString()?.trim();
+              const sku = columnMap.sku
+                ? row.getCell(columnMap.sku)?.value?.toString()?.trim()
+                : undefined;
+              const codigoBarras = columnMap.codigoBarras
+                ? row.getCell(columnMap.codigoBarras)?.value?.toString()?.trim()
+                : undefined;
+
+              // Validar datos requeridos
+              if (!nombre) {
+                errors.push(`Fila ${rowNum}: El nombre es requerido`);
+                continue;
+              }
+
+              const precio = parseFloat(precioStr || '0');
+              if (isNaN(precio) || precio < 0) {
+                errors.push(`Fila ${rowNum}: El precio debe ser un número válido mayor o igual a 0`);
+                continue;
+              }
+
+              const stock = parseInt(stockStr || '0', 10);
+              if (isNaN(stock) || stock < 0) {
+                errors.push(`Fila ${rowNum}: El stock debe ser un número entero válido mayor o igual a 0`);
+                continue;
+              }
+
+              // Lógica de upsert inteligente: Si existe SKU, actualizar; si no, crear
+              if (sku) {
+                // Buscar producto existente por SKU
+                const existingProduct = await tx.product.findFirst({
+                  where: {
+                    organizationId,
+                    sku,
+                  },
+                });
+
+                if (existingProduct) {
+                  // Actualizar producto existente (actualizar stock y precio si cambió)
+                  await tx.product.update({
+                    where: { id: existingProduct.id },
+                    data: {
+                      name: nombre,
+                      salePrice: precio,
+                      stock: stock, // Actualizar stock
+                      ...(codigoBarras && { barcode: codigoBarras }),
+                    },
+                  });
+                  updated++;
+                } else {
+                  // Crear nuevo producto con SKU
+                  await tx.product.create({
+                    data: {
+                      name: nombre,
+                      sku,
+                      salePrice: precio,
+                      costPrice: 0,
+                      stock,
+                      minStock: 5,
+                      companyId,
+                      organizationId,
+                      ...(codigoBarras && { barcode: codigoBarras }),
+                    },
+                  });
+                  created++;
+                }
+              } else if (codigoBarras) {
+                // Si no hay SKU pero hay código de barras, usar código de barras para upsert
+                const existingProduct = await tx.product.findFirst({
+                  where: {
+                    organizationId,
+                    barcode: codigoBarras,
+                  },
+                });
+
+                if (existingProduct) {
+                  // Actualizar producto existente
+                  await tx.product.update({
+                    where: { id: existingProduct.id },
+                    data: {
+                      name: nombre,
+                      salePrice: precio,
+                      stock: stock,
+                    },
+                  });
+                  updated++;
+                } else {
+                  // Crear nuevo producto
+                  await tx.product.create({
+                    data: {
+                      name: nombre,
+                      barcode: codigoBarras,
+                      salePrice: precio,
+                      costPrice: 0,
+                      stock,
+                      minStock: 5,
+                      companyId,
+                      organizationId,
+                    },
+                  });
+                  created++;
+                }
+              } else {
+                // Si no hay SKU ni código de barras, solo crear (no podemos hacer upsert)
+                await tx.product.create({
+                  data: {
+                    name: nombre,
+                    salePrice: precio,
+                    costPrice: 0,
+                    stock,
+                    minStock: 5,
+                    companyId,
+                    organizationId,
+                  },
+                });
+                created++;
+              }
+            } catch (error: any) {
+              errors.push(`Fila ${rowNum}: ${error.message || 'Error desconocido'}`);
+            }
+          }
+        },
+        {
+          timeout: 30000, // 30 segundos de timeout para transacciones largas
+        }
+      );
+
+      return {
+        success: true,
+        created,
+        updated,
+        total: worksheet.rowCount - 1, // Excluir fila de encabezados
+        errors: errors.slice(0, 50), // Limitar errores a 50 para no saturar la respuesta
+      };
     } catch (error: any) {
-      throw new BadRequestException(`Error al procesar el archivo Excel: ${error.message}`);
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(
+        `Error al procesar el archivo Excel: ${error.message || 'Error desconocido'}`
+      );
     }
   }
 }

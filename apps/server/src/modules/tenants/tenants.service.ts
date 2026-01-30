@@ -57,12 +57,12 @@ export class TenantsService {
       },
     });
 
-    // Asignar al Super Admin como OWNER de la nueva organización
+    // Asignar al Super Admin como SUPER_ADMIN de la nueva organización
     await this.prisma.member.create({
       data: {
         userId: userId,
         organizationId: organization.id,
-        role: 'OWNER',
+        role: 'SUPER_ADMIN',
         status: 'ACTIVE',
       },
     });

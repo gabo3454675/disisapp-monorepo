@@ -28,7 +28,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Plus, Loader2, UserPlus, Mail, Shield, User } from 'lucide-react';
+import { Plus, Loader2, UserPlus, Mail, Shield, User, Copy, Check, Link2 } from 'lucide-react';
 import apiClient from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePermission } from '@/hooks/usePermission';
@@ -41,7 +41,7 @@ interface Member {
   email: string;
   fullName: string | null;
   avatarUrl: string | null;
-  role: 'OWNER' | 'ADMIN' | 'SELLER' | 'WAREHOUSE';
+  role: 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'SELLER' | 'WAREHOUSE';
   status: string;
   joinedAt: string;
 }
@@ -52,10 +52,13 @@ export default function TeamPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
+  const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [invitationLink, setInvitationLink] = useState<string>('');
   const [inviteFormData, setInviteFormData] = useState({
     email: '',
-    role: 'SELLER' as 'ADMIN' | 'SELLER',
+    role: 'SELLER' as 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'SELLER' | 'WAREHOUSE',
   });
 
   const organizationId = selectedOrganizationId || selectedCompanyId;
@@ -89,6 +92,12 @@ export default function TeamPage() {
     setInviteFormData({ email: '', role: 'SELLER' });
   };
 
+  const handleCloseLinkDialog = () => {
+    setIsLinkDialogOpen(false);
+    setInvitationLink('');
+    setCopied(false);
+  };
+
   const handleInviteMember = async () => {
     if (!inviteFormData.email || !inviteFormData.email.includes('@')) {
       alert('Por favor ingresa un email válido');
@@ -97,12 +106,25 @@ export default function TeamPage() {
 
     setSubmitting(true);
     try {
-      await apiClient.post('/invitations', {
+      const response = await apiClient.post<{
+        invitation: any;
+        token: string;
+        invitationUrl: string;
+      }>('/invitations', {
         email: inviteFormData.email,
         role: inviteFormData.role,
       });
-      alert('Invitación enviada exitosamente');
+
+      // Construir la URL completa de invitación
+      // El backend retorna: /accept-invitation?token=xxx
+      // Necesitamos convertirla a: /invite/xxx (formato de Next.js)
+      const baseUrl = window.location.origin;
+      const token = response.data.token;
+      const fullInvitationUrl = `${baseUrl}/invite/${token}`;
+      
+      setInvitationLink(fullInvitationUrl);
       handleCloseInviteDialog();
+      setIsLinkDialogOpen(true);
       fetchMembers();
     } catch (error: any) {
       console.error('Error inviting member:', error);
@@ -113,10 +135,22 @@ export default function TeamPage() {
     }
   };
 
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(invitationLink);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      console.error('Error copying to clipboard:', error);
+      alert('Error al copiar el link');
+    }
+  };
+
   const getRoleLabel = (role: string) => {
     const labels: Record<string, string> = {
-      OWNER: 'Propietario',
-      ADMIN: 'Gerente',
+      SUPER_ADMIN: 'Super Administrador',
+      ADMIN: 'Administrador',
+      MANAGER: 'Gerente',
       SELLER: 'Cajero/Vendedor',
       WAREHOUSE: 'Almacén',
     };
@@ -124,8 +158,9 @@ export default function TeamPage() {
   };
 
   const getRoleBadgeVariant = (role: string) => {
-    if (role === 'OWNER') return 'default';
+    if (role === 'SUPER_ADMIN') return 'default';
     if (role === 'ADMIN') return 'secondary';
+    if (role === 'MANAGER') return 'secondary';
     return 'outline';
   };
 
@@ -275,7 +310,7 @@ export default function TeamPage() {
               <Label htmlFor="role">Rol</Label>
               <Select
                 value={inviteFormData.role}
-                onValueChange={(value: 'ADMIN' | 'SELLER') =>
+                onValueChange={(value: 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'SELLER' | 'WAREHOUSE') =>
                   setInviteFormData({ ...inviteFormData, role: value })
                 }
               >
@@ -283,12 +318,13 @@ export default function TeamPage() {
                   <SelectValue placeholder="Selecciona un rol" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="ADMIN">Gerente (ADMIN)</SelectItem>
+                  <SelectItem value="MANAGER">Gerente (MANAGER)</SelectItem>
                   <SelectItem value="SELLER">Cajero/Vendedor (SELLER)</SelectItem>
+                  <SelectItem value="WAREHOUSE">Almacén (WAREHOUSE)</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                El Gerente puede gestionar el equipo y configuraciones. El Cajero/Vendedor solo puede realizar ventas.
+                El Gerente puede gestionar el equipo y configuraciones. El Cajero/Vendedor solo puede realizar ventas. Almacén gestiona inventario.
               </p>
             </div>
           </div>
@@ -310,6 +346,87 @@ export default function TeamPage() {
                 <>
                   <UserPlus className="mr-2 h-4 w-4" />
                   Enviar Invitación
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Link Invitation Dialog - Muestra el link de invitación */}
+      <Dialog open={isLinkDialogOpen} onOpenChange={setIsLinkDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Check className="h-5 w-5 text-green-500" />
+              Invitación Creada Exitosamente
+            </DialogTitle>
+            <DialogDescription>
+              Copia el siguiente link y compártelo con <strong>{inviteFormData.email}</strong> para que se una a tu organización.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="invitation-link" className="text-sm font-medium">
+                Link de Invitación
+              </Label>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 relative">
+                  <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="invitation-link"
+                    value={invitationLink}
+                    readOnly
+                    className="pl-9 pr-20 font-mono text-sm bg-muted"
+                  />
+                </div>
+                <Button
+                  onClick={handleCopyLink}
+                  variant={copied ? 'default' : 'outline'}
+                  size="icon"
+                  className="shrink-0"
+                  title={copied ? 'Copiado!' : 'Copiar link'}
+                >
+                  {copied ? (
+                    <Check className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+              {copied && (
+                <p className="text-xs text-green-600 flex items-center gap-1">
+                  <Check className="h-3 w-3" />
+                  Link copiado al portapapeles
+                </p>
+              )}
+            </div>
+            <div className="rounded-lg bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 p-4">
+              <p className="text-sm text-blue-900 dark:text-blue-100">
+                <strong>📧 Instrucciones:</strong>
+              </p>
+              <ol className="text-xs text-blue-800 dark:text-blue-200 mt-2 space-y-1 list-decimal list-inside">
+                <li>Copia el link de arriba</li>
+                <li>Envíalo por WhatsApp, Email o el método que prefieras</li>
+                <li>El usuario debe hacer clic en el link para aceptar la invitación</li>
+                <li>El link expira en 7 días</li>
+              </ol>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={handleCloseLinkDialog} variant="outline">
+              Cerrar
+            </Button>
+            <Button onClick={handleCopyLink} variant="default">
+              {copied ? (
+                <>
+                  <Check className="mr-2 h-4 w-4" />
+                  Copiado
+                </>
+              ) : (
+                <>
+                  <Copy className="mr-2 h-4 w-4" />
+                  Copiar Link
                 </>
               )}
             </Button>

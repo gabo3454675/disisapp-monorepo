@@ -29,7 +29,7 @@ export function usePermission() {
   const permissions = useMemo(() => {
     // Normalizar el rol a mayúsculas para comparación
     const roleString = currentOrg?.role?.toString() || '';
-    const role = roleString.toUpperCase().trim() as 'OWNER' | 'ADMIN' | 'SELLER' | 'WAREHOUSE' | string;
+    const role = roleString.toUpperCase().trim() as 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'SELLER' | 'WAREHOUSE' | string;
     
     // Debug - SIEMPRE mostrar información para diagnóstico
     if (typeof window !== 'undefined') {
@@ -49,30 +49,35 @@ export function usePermission() {
     }
 
     // Permisos basados en roles - comparación estricta
-    const isOwner = role === 'OWNER';
+    const isSuperAdmin = role === 'SUPER_ADMIN';
     const isAdmin = role === 'ADMIN';
+    const isManager = role === 'MANAGER';
     const isSeller = role === 'SELLER';
     const isWarehouse = role === 'WAREHOUSE';
 
     // Permisos específicos
-    const canManageExpenses = isOwner || isAdmin;
-    const canManageTeam = isOwner || isAdmin;
-    const canDelete = isOwner || isAdmin;
-    const canInviteMembers = isOwner || isAdmin;
-    const canCreateOrganization = isOwner; // Solo Super Admin puede crear organizaciones
-    const canViewReports = isOwner || isAdmin;
-    const canManageSettings = isOwner || isAdmin;
-    const canAnulateInvoices = isOwner || isAdmin;
-    const canDeleteInvoices = isOwner || isAdmin;
-    const canManageProducts = isOwner || isAdmin || isWarehouse;
-    const canManageCustomers = isOwner || isAdmin || isSeller;
+    // SUPER_ADMIN tiene todos los permisos
+    // ADMIN tiene permisos de gestión pero no puede crear otros ADMIN
+    // MANAGER tiene permisos intermedios
+    const canManageExpenses = isSuperAdmin || isAdmin || isManager;
+    const canManageTeam = isSuperAdmin || isAdmin;
+    const canDelete = isSuperAdmin || isAdmin;
+    const canInviteMembers = isSuperAdmin || isAdmin;
+    const canCreateOrganization = isSuperAdmin; // Solo SUPER_ADMIN puede crear organizaciones
+    const canViewReports = isSuperAdmin || isAdmin || isManager;
+    const canManageSettings = isSuperAdmin || isAdmin;
+    const canAnulateInvoices = isSuperAdmin || isAdmin;
+    const canDeleteInvoices = isSuperAdmin || isAdmin;
+    const canManageProducts = isSuperAdmin || isAdmin || isManager || isWarehouse;
+    const canManageCustomers = isSuperAdmin || isAdmin || isManager || isSeller;
     const canViewDashboard = true; // Todos pueden ver el dashboard básico
-    const canViewFinancialCharts = isOwner || isAdmin; // Solo OWNER/ADMIN ven gráficos financieros
+    const canViewFinancialCharts = isSuperAdmin || isAdmin || isManager; // SUPER_ADMIN/ADMIN/MANAGER ven gráficos financieros
 
     return {
       role,
-      isOwner,
+      isSuperAdmin,
       isAdmin,
+      isManager,
       isSeller,
       isWarehouse,
       canManageExpenses,

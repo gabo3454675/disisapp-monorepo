@@ -229,7 +229,7 @@ export default function DashboardPage() {
             />
           </div>
 
-          {/* Gráficos financieros - Solo para OWNER/ADMIN */}
+          {/* Gráficos financieros - Solo para SUPER_ADMIN/ADMIN/MANAGER */}
           {canViewFinancialCharts && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
               {/* Revenue Chart */}

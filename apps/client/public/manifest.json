@@ -1,12 +1,16 @@
 {
-  "name": "Sistema de Facturación",
+  "name": "Sistema de Facturación - Disis Corp",
   "short_name": "Facturación",
-  "description": "Sistema de Facturación Multi-tenant SaaS B2B",
+  "description": "Sistema de Facturación Multi-tenant SaaS B2B para gestión de inventario, facturas y gastos",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#3b82f6",
-  "orientation": "portrait-primary",
+  "orientation": "any",
+  "categories": ["business", "productivity", "finance"],
+  "lang": "es",
+  "dir": "ltr",
   "icons": [
     {
       "src": "/icon-192x192.png",
@@ -19,6 +23,23 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Nueva Factura",
+      "short_name": "Factura",
+      "description": "Crear una nueva factura",
+      "url": "/pos",
+      "icons": [{ "src": "/icon-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Productos",
+      "short_name": "Productos",
+      "description": "Gestionar productos",
+      "url": "/products",
+      "icons": [{ "src": "/icon-192x192.png", "sizes": "192x192" }]
     }
   ]
 }

@@ -22,7 +22,7 @@ export class InvitationsService {
     organizationId: number,
     invitedBy: number,
   ) {
-    // Validar que el invitador tiene permisos (OWNER o ADMIN)
+    // Validar que el invitador tiene permisos (SUPER_ADMIN o ADMIN)
     const inviterMembership = await this.prisma.member.findFirst({
       where: {
         userId: invitedBy,
@@ -37,9 +37,24 @@ export class InvitationsService {
       );
     }
 
-    if (inviterMembership.role !== 'OWNER' && inviterMembership.role !== 'ADMIN') {
+    // Solo SUPER_ADMIN y ADMIN pueden invitar miembros
+    if (inviterMembership.role !== 'SUPER_ADMIN' && inviterMembership.role !== 'ADMIN') {
       throw new ForbiddenException(
-        'Solo los OWNER y ADMIN pueden invitar miembros',
+        'Solo los SUPER_ADMIN y ADMIN pueden invitar miembros',
+      );
+    }
+
+    // REGLA DE ORO: Los ADMIN no pueden crear otros ADMIN
+    if (inviterMembership.role === 'ADMIN' && inviteDto.role === 'ADMIN') {
+      throw new ForbiddenException(
+        'Los ADMIN no pueden crear otros ADMIN. Solo el SUPER_ADMIN puede asignar roles ADMIN.',
+      );
+    }
+
+    // Los ADMIN tampoco pueden crear SUPER_ADMIN
+    if (inviterMembership.role === 'ADMIN' && inviteDto.role === 'SUPER_ADMIN') {
+      throw new ForbiddenException(
+        'Los ADMIN no pueden crear SUPER_ADMIN. Solo el SUPER_ADMIN del sistema puede asignar este rol.',
       );
     }
 
@@ -260,9 +275,9 @@ export class InvitationsService {
       },
     });
 
-    if (!membership || (membership.role !== 'OWNER' && membership.role !== 'ADMIN')) {
+    if (!membership || (membership.role !== 'SUPER_ADMIN' && membership.role !== 'ADMIN')) {
       throw new ForbiddenException(
-        'Solo los OWNER y ADMIN pueden ver las invitaciones',
+        'Solo los SUPER_ADMIN y ADMIN pueden ver las invitaciones',
       );
     }
 

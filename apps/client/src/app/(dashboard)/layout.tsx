@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/useAuthStore';
 import Sidebar from '@/components/sidebar';
 import BottomNav from '@/components/bottom-nav';
 import { PermissionDebug } from '@/components/permission-debug';
+import { PWAInstallPrompt } from '@/components/pwa-install-prompt';
 import { Loader2 } from 'lucide-react';
 
 export default function DashboardLayout({
@@ -106,6 +107,9 @@ export default function DashboardLayout({
 
       {/* Mobile Bottom Navigation */}
       <BottomNav />
+      
+      {/* PWA Install Prompt */}
+      <PWAInstallPrompt />
       
       {/* Debug Component (solo en desarrollo) */}
       <PermissionDebug />

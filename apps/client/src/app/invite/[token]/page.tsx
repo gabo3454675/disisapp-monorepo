@@ -62,8 +62,9 @@ export default function AcceptInvitationPage() {
 
   const getRoleLabel = (role: string) => {
     const labels: Record<string, string> = {
-      OWNER: 'Propietario',
-      ADMIN: 'Gerente',
+      SUPER_ADMIN: 'Super Administrador',
+      ADMIN: 'Administrador',
+      MANAGER: 'Gerente',
       SELLER: 'Cajero/Vendedor',
       WAREHOUSE: 'Almacén',
     };

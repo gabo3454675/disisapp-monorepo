@@ -21,7 +21,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus, Edit, Trash2, Search, Loader2, Upload, FileSpreadsheet } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
+import { Plus, Edit, Trash2, Search, Loader2, Upload, FileSpreadsheet, CheckCircle2, XCircle } from 'lucide-react';
 import apiClient from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -58,6 +59,13 @@ export default function ProductsPage() {
   });
   const [submitting, setSubmitting] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<{
+    uploading: boolean;
+    created?: number;
+    updated?: number;
+    total?: number;
+    errors?: string[];
+  } | null>(null);
 
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
@@ -203,9 +211,22 @@ export default function ProductsPage() {
             <p className="text-muted-foreground">Gestiona tu catálogo de productos</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => document.getElementById('file-input')?.click()}>
-              <Upload className="mr-2 h-4 w-4" />
-              Importar Excel
+            <Button 
+              variant="outline" 
+              onClick={() => document.getElementById('file-input')?.click()}
+              disabled={importing}
+            >
+              {importing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Importando...
+                </>
+              ) : (
+                <>
+                  <FileSpreadsheet className="mr-2 h-4 w-4" />
+                  Importar Excel
+                </>
+              )}
             </Button>
             <input
               id="file-input"
@@ -217,29 +238,43 @@ export default function ProductsPage() {
                 if (!file) return;
 
                 setImporting(true);
+                setImportProgress({ uploading: true });
+
                 try {
                   const formData = new FormData();
                   formData.append('file', file);
 
-                  const response = await apiClient.post('/products/import', formData, {
+                  const response = await apiClient.post('/products/upload-excel', formData, {
                     headers: {
                       'Content-Type': 'multipart/form-data',
                     },
                   });
 
-                  const { success, errors, total } = response.data;
-                  alert(
-                    `Importación completada:\n${success} productos importados de ${total} total${
-                      errors.length > 0 ? `\n${errors.length} errores (ver consola)` : ''
-                    }`,
-                  );
-                  if (errors.length > 0) {
-                    console.error('Errores de importación:', errors);
-                  }
-                  fetchProducts();
+                  const { created, updated, total, errors } = response.data;
+                  
+                  setImportProgress({
+                    uploading: false,
+                    created,
+                    updated,
+                    total,
+                    errors: errors || [],
+                  });
+
+                  // Recargar productos después de 2 segundos para mostrar el resumen
+                  setTimeout(() => {
+                    fetchProducts();
+                    setImportProgress(null);
+                  }, 3000);
                 } catch (error: any) {
                   console.error('Error importing products:', error);
-                  alert(error.response?.data?.message || 'Error al importar productos');
+                  setImportProgress({
+                    uploading: false,
+                    errors: [error.response?.data?.message || 'Error al importar productos'],
+                  });
+                  
+                  setTimeout(() => {
+                    setImportProgress(null);
+                  }, 3000);
                 } finally {
                   setImporting(false);
                   // Reset input
@@ -274,12 +309,71 @@ export default function ProductsPage() {
             </div>
           </CardHeader>
           <CardContent>
-            {loading || importing ? (
+            {/* Resumen de importación */}
+            {importProgress && !importProgress.uploading && (
+              <div className={`mb-4 p-4 rounded-lg border ${
+                importProgress.errors && importProgress.errors.length > 0
+                  ? 'bg-destructive/10 border-destructive'
+                  : 'bg-green-50 border-green-200'
+              }`}>
+                <div className="flex items-start gap-3">
+                  {importProgress.errors && importProgress.errors.length > 0 ? (
+                    <XCircle className="h-5 w-5 text-destructive mt-0.5" />
+                  ) : (
+                    <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5" />
+                  )}
+                  <div className="flex-1">
+                    <h4 className="font-semibold mb-1">
+                      {importProgress.errors && importProgress.errors.length > 0
+                        ? 'Importación completada con errores'
+                        : 'Importación completada exitosamente'}
+                    </h4>
+                    {importProgress.created !== undefined && importProgress.updated !== undefined && (
+                      <p className="text-sm text-muted-foreground">
+                        <span className="font-medium text-green-600">{importProgress.created}</span> productos creados,{' '}
+                        <span className="font-medium text-blue-600">{importProgress.updated}</span> productos actualizados
+                        {importProgress.total !== undefined && (
+                          <> de {importProgress.total} total</>
+                        )}
+                      </p>
+                    )}
+                    {importProgress.errors && importProgress.errors.length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-sm font-medium text-destructive mb-1">
+                          Errores ({importProgress.errors.length}):
+                        </p>
+                        <ul className="text-xs text-muted-foreground space-y-1 max-h-32 overflow-y-auto">
+                          {importProgress.errors.slice(0, 5).map((error, idx) => (
+                            <li key={idx}>• {error}</li>
+                          ))}
+                          {importProgress.errors.length > 5 && (
+                            <li className="text-muted-foreground">
+                              ... y {importProgress.errors.length - 5} errores más
+                            </li>
+                          )}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Barra de progreso durante importación */}
+            {importProgress?.uploading && (
+              <div className="mb-4 space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Procesando archivo Excel...</span>
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                </div>
+                <Progress value={undefined} className="h-2" />
+              </div>
+            )}
+
+            {loading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                <span className="ml-2 text-muted-foreground">
-                  {importing ? 'Importando productos...' : 'Cargando...'}
-                </span>
+                <span className="ml-2 text-muted-foreground">Cargando...</span>
               </div>
             ) : filteredProducts.length === 0 ? (
               <p className="text-center py-12 text-muted-foreground">

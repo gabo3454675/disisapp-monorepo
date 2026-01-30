@@ -61,7 +61,7 @@ model CompanyMember {
   id        Int      @id @default(autoincrement())
   userId    Int
   companyId Int
-  role      Role     @default(SELLER) // OWNER, ADMIN, SELLER, WAREHOUSE
+  role      Role     @default(SELLER) // SUPER_ADMIN, ADMIN, MANAGER, SELLER, WAREHOUSE
   status    String   @default("ACTIVE") // ACTIVE, SUSPENDED
   joinedAt  DateTime @default(now())
 
@@ -76,8 +76,9 @@ model CompanyMember {
 }
 
 enum Role {
-  OWNER
+  SUPER_ADMIN
   ADMIN
+  MANAGER
   SELLER
   WAREHOUSE
 }
@@ -155,7 +156,7 @@ model Member {
   id             Int      @id @default(autoincrement())
   userId         Int
   organizationId Int
-  role           Role     @default(SELLER) // OWNER, ADMIN, SELLER, WAREHOUSE
+  role           Role     @default(SELLER) // SUPER_ADMIN, ADMIN, MANAGER, SELLER, WAREHOUSE
   status         String   @default("ACTIVE") // ACTIVE, SUSPENDED
   joinedAt       DateTime @default(now())
 
