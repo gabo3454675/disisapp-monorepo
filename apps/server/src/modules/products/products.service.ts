@@ -171,7 +171,7 @@ export class ProductsService {
 
       // Leer el archivo Excel con exceljs
       const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.load(file.buffer);
+      await workbook.xlsx.load(file.buffer as any);
 
       // Obtener la primera hoja
       const worksheet = workbook.worksheets[0];
