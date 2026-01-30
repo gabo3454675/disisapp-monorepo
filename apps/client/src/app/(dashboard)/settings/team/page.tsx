@@ -48,7 +48,7 @@ interface Member {
 
 export default function TeamPage() {
   const { selectedOrganizationId, selectedCompanyId } = useAuthStore();
-  const { canManageTeam } = usePermission();
+  const { canManageTeam, isSuperAdmin } = usePermission();
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
@@ -318,6 +318,9 @@ export default function TeamPage() {
                   <SelectValue placeholder="Selecciona un rol" />
                 </SelectTrigger>
                 <SelectContent>
+                  {isSuperAdmin && (
+                    <SelectItem value="ADMIN">Administrador (ADMIN)</SelectItem>
+                  )}
                   <SelectItem value="MANAGER">Gerente (MANAGER)</SelectItem>
                   <SelectItem value="SELLER">Cajero/Vendedor (SELLER)</SelectItem>
                   <SelectItem value="WAREHOUSE">Almacén (WAREHOUSE)</SelectItem>
