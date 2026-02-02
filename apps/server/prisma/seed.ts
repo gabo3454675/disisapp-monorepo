@@ -7,6 +7,7 @@ const prisma = new PrismaClient();
 // CONFIGURACIÓN PARA PRODUCCIÓN
 // ============================================
 const SUPER_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || 'glonga10@gmail.com';
+const SUPER_ADMIN_NAME = 'Gabriel longa';
 const SUPER_ADMIN_PASSWORD = '338232gG';
 
 // Segundo Super Admin - Dueño de las 3 empresas
@@ -30,11 +31,13 @@ async function main() {
     update: {
       isSuperAdmin: true, // Asegurar que es Super Admin
       passwordHash, // Actualizar password en cada ejecución
+      // Requisito: asegurar nombre del usuario principal
+      fullName: SUPER_ADMIN_NAME,
     },
     create: {
       email: SUPER_ADMIN_EMAIL,
       passwordHash,
-      fullName: 'Super Administrador del Sistema',
+      fullName: SUPER_ADMIN_NAME,
       isSuperAdmin: true,
     },
   });

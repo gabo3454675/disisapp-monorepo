@@ -171,7 +171,12 @@ export default function Sidebar() {
                   <ChevronDown className="h-4 w-4 flex-shrink-0" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-56">
+              <DropdownMenuContent
+                align="start"
+                side="bottom"
+                collisionPadding={10}
+                className="w-[--radix-dropdown-menu-trigger-width] max-w-[calc(100vw-20px)]"
+              >
                 <DropdownMenuLabel>Seleccionar Organización</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {organizations.map((org) => (
@@ -228,7 +233,12 @@ export default function Sidebar() {
                   {organizationInitials}
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-56">
+              <DropdownMenuContent
+                align="start"
+                side="bottom"
+                collisionPadding={10}
+                className="w-[--radix-dropdown-menu-trigger-width] max-w-[calc(100vw-20px)]"
+              >
                 <DropdownMenuLabel>Seleccionar Organización</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {organizations.map((org) => (

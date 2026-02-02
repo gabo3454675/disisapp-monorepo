@@ -179,6 +179,7 @@ model Product {
   companyId     Int      // Legacy: mantener para compatibilidad
   organizationId Int?    // Nueva relación Multi-Tenant
   name          String
+  description   String?  // Descripción del producto (para import masivo / inventario)
   sku           String?
   barcode       String?  // Para el escáner
   costPrice     Decimal  @default(0) @db.Decimal(10, 2)
@@ -196,6 +197,10 @@ model Product {
   @@index([companyId]) // Índice para búsquedas rápidas por empresa (legacy)
   @@index([organizationId]) // Índice para búsquedas rápidas por organización
   @@index([barcode])   // Índice para el escáner
+  // Unicidad recomendada: SKU único por organización (multi-tenant)
+  // Nota: como `organizationId` y `sku` son opcionales por compatibilidad legacy,
+  // este constraint aplica efectivamente cuando ambos están presentes.
+  @@unique([organizationId, sku])
   @@map("products")
 }
 

@@ -6,6 +6,74 @@ import { DashboardSummaryDto } from './dto/dashboard-summary.dto';
 export class DashboardService {
   constructor(private prisma: PrismaService) {}
 
+  /**
+   * Facturas pendientes (top 5) para widgets del dashboard.
+   * Performance: take(5) obligatorio.
+   */
+  async getPendingInvoices(organizationId: number) {
+    const invoices = await this.prisma.invoice.findMany({
+      where: {
+        organizationId,
+        status: 'PENDING',
+      },
+      take: 5,
+      orderBy: {
+        createdAt: 'desc',
+      },
+      include: {
+        customer: {
+          select: { name: true },
+        },
+      },
+    });
+
+    return invoices.map((inv) => ({
+      id: inv.id,
+      status: inv.status,
+      createdAt: inv.createdAt,
+      totalAmount: Number(inv.totalAmount),
+      customerName: inv.customer?.name || 'Cliente General',
+    }));
+  }
+
+  /**
+   * Productos con stock bajo (top 5) para widgets del dashboard.
+   * Performance: take(5) obligatorio.
+   *
+   * Nota: para que Prisma pueda filtrar en DB sin traer todo, usamos umbral fijo (< 5)
+   * alineado con el requerimiento UX del dashboard.
+   */
+  async getLowStock(organizationId: number, threshold: number = 5) {
+    const products = await this.prisma.product.findMany({
+      where: {
+        organizationId,
+        stock: { lt: threshold },
+      },
+      take: 5,
+      orderBy: [
+        { stock: 'asc' }, // prioridad: más crítico primero
+        { updatedAt: 'desc' },
+      ],
+      select: {
+        id: true,
+        sku: true,
+        name: true,
+        stock: true,
+        minStock: true,
+        updatedAt: true,
+      },
+    });
+
+    return products.map((p) => ({
+      id: p.id,
+      sku: p.sku,
+      name: p.name,
+      stock: p.stock,
+      minStock: p.minStock ?? 5,
+      updatedAt: p.updatedAt,
+    }));
+  }
+
   async getSummary(organizationId: number): Promise<DashboardSummaryDto> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -38,22 +106,13 @@ export class DashboardService {
       },
     });
 
-    // Productos con stock bajo
-    // Obtenemos todos los productos y los filtramos en memoria
-    // porque Prisma no soporta comparación directa de campos en WHERE
-    const allProducts = await this.prisma.product.findMany({
+    // Productos con stock bajo (conteo)
+    // Performance: conteo directo por umbral fijo para evitar traer todo a memoria.
+    const lowStockCount = await this.prisma.product.count({
       where: {
-        organizationId, // OBLIGATORIO: Filtro por organización para aislamiento multi-tenant
+        organizationId,
+        stock: { lt: 5 },
       },
-      select: {
-        stock: true,
-        minStock: true,
-      },
-    });
-
-    const lowStockProducts = allProducts.filter((product) => {
-      const threshold = product.minStock || 5;
-      return product.stock < threshold;
     });
 
     // Últimas 5 facturas
@@ -85,7 +144,7 @@ export class DashboardService {
     return {
       totalSalesToday,
       productsCount,
-      lowStockCount: lowStockProducts.length,
+      lowStockCount,
       recentTransactions,
     };
   }

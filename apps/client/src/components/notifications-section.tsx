@@ -1,8 +1,11 @@
 'use client';
 
-import { Bell, CheckCircle2, AlertCircle, Clock } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Bell, CheckCircle2, AlertCircle, Clock, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import apiClient from '@/lib/api';
 
 interface Notification {
   id: number;
@@ -13,40 +16,35 @@ interface Notification {
   icon: 'clock' | 'alert' | 'check';
 }
 
-const notificationsData: Notification[] = [
-  {
-    id: 1,
-    title: 'Factura #INV-2024-001 Pendiente',
-    description: 'Esperando pago de Acme Corp',
-    status: 'pending',
-    time: 'hace 2 horas',
-    icon: 'clock',
-  },
-  {
-    id: 2,
-    title: 'Alerta de Stock Bajo',
-    description: 'El producto SKU-12345 se está agotando',
-    status: 'urgent',
-    time: 'hace 4 horas',
-    icon: 'alert',
-  },
-  {
-    id: 3,
-    title: 'Pago Recibido',
-    description: 'La factura #INV-2024-005 ha sido pagada',
-    status: 'completed',
-    time: 'hace 1 día',
-    icon: 'check',
-  },
-  {
-    id: 4,
-    title: 'Pedido Cliente Listo',
-    description: 'El pedido #ORD-2024-042 está listo para recoger',
-    status: 'pending',
-    time: 'hace 6 horas',
-    icon: 'clock',
-  },
-];
+type Invoice = {
+  id: number;
+  status: 'PENDING' | 'PAID' | 'CANCELLED' | string;
+  createdAt?: string;
+  customerName?: string;
+  totalAmount?: number;
+};
+
+type Product = {
+  id: number;
+  sku?: string | null;
+  name: string;
+  stock: number;
+  minStock?: number | null;
+  updatedAt?: string;
+};
+
+const timeAgo = (dateString?: string) => {
+  if (!dateString) return '—';
+  const date = new Date(dateString);
+  const diffMs = Date.now() - date.getTime();
+  const min = Math.floor(diffMs / 60000);
+  if (min < 1) return 'recién';
+  if (min < 60) return `hace ${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `hace ${h} h`;
+  const d = Math.floor(h / 24);
+  return `hace ${d} d`;
+};
 
 const getStatusStyles = (status: string) => {
   switch (status) {
@@ -74,8 +72,102 @@ const getIcon = (iconType: string) => {
 };
 
 export default function NotificationsSection() {
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [pendingInvoices, setPendingInvoices] = useState<Invoice[]>([]);
+  const [lowStockProducts, setLowStockProducts] = useState<Product[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+    async function load() {
+      try {
+        setLoading(true);
+        setError(null);
+
+        // Endpoints optimizados (performance): ya vienen limitados con take(5) en backend.
+        const [invoicesRes, productsRes] = await Promise.all([
+          apiClient.get<Invoice[]>('/dashboard/pending-invoices'),
+          apiClient.get<Product[]>('/dashboard/low-stock'),
+        ]);
+
+        if (!mounted) return;
+
+        const invoices = Array.isArray(invoicesRes.data) ? invoicesRes.data : [];
+        const products = Array.isArray(productsRes.data) ? productsRes.data : [];
+
+        // Backend ya filtra PENDING y limita a 5.
+        setPendingInvoices(invoices);
+
+        // Backend ya filtra stock bajo (< 5) y limita a 5.
+        setLowStockProducts(products);
+      } catch (e: any) {
+        if (!mounted) return;
+        setError(e?.response?.data?.message || e?.message || 'Error al cargar alertas');
+        setPendingInvoices([]);
+        setLowStockProducts([]);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    }
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const notificationsData: Notification[] = useMemo(() => {
+    const items: Notification[] = [];
+
+    // Facturas PENDING (mostrar las más recientes primero si hay createdAt)
+    const sortedPending = [...pendingInvoices].sort((a, b) => {
+      const da = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const db = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return db - da;
+    });
+
+    for (const inv of sortedPending.slice(0, 3)) {
+      const customerName = inv.customerName || 'Cliente';
+      items.push({
+        id: Number(`1${inv.id}`), // id estable para React
+        title: `Factura #${inv.id} Pendiente`,
+        description: `Esperando pago de ${customerName}`,
+        status: 'pending',
+        time: timeAgo(inv.createdAt),
+        icon: 'clock',
+      });
+    }
+
+    // Productos con stock bajo
+    for (const p of lowStockProducts.slice(0, 3)) {
+      const skuLabel = p.sku ? `SKU ${p.sku}` : `Producto #${p.id}`;
+      items.push({
+        id: Number(`2${p.id}`),
+        title: 'Alerta de Stock Bajo',
+        description: `${skuLabel} • ${p.name} (stock: ${p.stock})`,
+        status: 'urgent',
+        time: 'revisar hoy',
+        icon: 'alert',
+      });
+    }
+
+    // Estado “completo” si no hay nada que hacer
+    if (items.length === 0 && !loading && !error) {
+      items.push({
+        id: 999999,
+        title: 'Todo al día',
+        description: 'No hay facturas pendientes ni productos con stock bajo',
+        status: 'completed',
+        time: '—',
+        icon: 'check',
+      });
+    }
+
+    return items;
+  }, [pendingInvoices, lowStockProducts, loading, error]);
+
   const pendingCount = notificationsData.filter(
-    (n) => n.status === 'pending' || n.status === 'urgent'
+    (n) => n.status === 'pending' || n.status === 'urgent',
   ).length;
 
   return (
@@ -93,11 +185,35 @@ export default function NotificationsSection() {
         </Badge>
       </CardHeader>
       <CardContent>
+        {loading && (
+          <div className="flex items-center justify-center py-10 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin mr-2" />
+            Cargando alertas...
+          </div>
+        )}
+
+        {error && !loading && (
+          <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+            {error}
+          </div>
+        )}
+
         <div className="space-y-3">
-          {notificationsData.map((notification) => (
+          {!loading &&
+            !error &&
+            notificationsData.map((notification) => (
             <div
               key={notification.id}
               className="flex gap-4 p-4 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors border border-transparent hover:border-border/50"
+              role="button"
+              tabIndex={0}
+              onClick={() => {
+                // Navegación rápida:
+                // - Facturas pendientes -> /invoices
+                // - Stock bajo -> /products
+                if (notification.title.includes('Factura')) router.push('/invoices');
+                if (notification.title.includes('Stock')) router.push('/products');
+              }}
             >
               <div className="flex-shrink-0 pt-1">{getIcon(notification.icon)}</div>
               <div className="flex-1 min-w-0">

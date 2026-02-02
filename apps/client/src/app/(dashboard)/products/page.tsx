@@ -69,6 +69,40 @@ export default function ProductsPage() {
 
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
+  const handleDownloadInventoryTemplate = useCallback(async () => {
+    try {
+      const response = await apiClient.get('/inventory/template', {
+        responseType: 'blob',
+      });
+
+      // Intentar obtener nombre desde Content-Disposition
+      const disposition = response.headers?.['content-disposition'] as string | undefined;
+      const match = disposition?.match(/filename="?([^"]+)"?/i);
+      const filename = match?.[1] || 'inventory-template.xlsx';
+
+      const blob = new Blob([response.data], {
+        type:
+          response.headers?.['content-type'] ||
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error: any) {
+      console.error('Error downloading template:', error);
+      alert(
+        error.response?.data?.message ||
+          'No se pudo descargar la plantilla. Verifica que estás logueado y tienes una organización seleccionada.',
+      );
+    }
+  }, []);
+
   const fetchProducts = useCallback(async () => {
     if (!selectedCompanyId) return;
 
@@ -211,6 +245,14 @@ export default function ProductsPage() {
             <p className="text-muted-foreground">Gestiona tu catálogo de productos</p>
           </div>
           <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={handleDownloadInventoryTemplate}
+              disabled={importing}
+            >
+              <Upload className="mr-2 h-4 w-4" />
+              Descargar Plantilla
+            </Button>
             <Button 
               variant="outline" 
               onClick={() => document.getElementById('file-input')?.click()}

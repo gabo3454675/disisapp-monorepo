@@ -16,4 +16,18 @@ export class DashboardController {
   async getSummary(@ActiveOrganization() organizationId: number) {
     return this.dashboardService.getSummary(organizationId);
   }
+
+  @Get('pending-invoices')
+  @UseInterceptors(CacheInterceptor)
+  @CacheTTL(15)
+  async getPendingInvoices(@ActiveOrganization() organizationId: number) {
+    return this.dashboardService.getPendingInvoices(organizationId);
+  }
+
+  @Get('low-stock')
+  @UseInterceptors(CacheInterceptor)
+  @CacheTTL(15)
+  async getLowStock(@ActiveOrganization() organizationId: number) {
+    return this.dashboardService.getLowStock(organizationId, 5);
+  }
 }

@@ -5,6 +5,13 @@ import { useRouter, usePathname } from 'next/navigation';
 import { Grid2x2, ShoppingCart, Box, MoreVertical, Users, FileText, DollarSign, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   Sheet,
   SheetContent,
   SheetHeader,
@@ -13,6 +20,7 @@ import {
 } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 import { usePermission } from '@/hooks/usePermission';
+import { useAuthStore } from '@/store/useAuthStore';
 
 const navigationItems = [
   { id: 'dashboard', label: 'Dashboard', icon: Grid2x2, href: '/' },
@@ -33,6 +41,36 @@ export default function BottomNav() {
   const pathname = usePathname();
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const permissions = usePermission();
+  const {
+    user,
+    selectedCompanyId,
+    selectedOrganizationId,
+    selectCompany,
+    selectOrganization,
+    getOrganizations,
+    getCurrentOrganization,
+  } = useAuthStore();
+
+  const organizations = getOrganizations();
+  const currentOrg = getCurrentOrganization();
+  const hasMultipleOrganizations = organizations.length > 1;
+  const selectedId = selectedOrganizationId || selectedCompanyId;
+
+  const handleOrganizationChange = (organizationId: number) => {
+    // Priorizar selectOrganization sobre selectCompany
+    if (user?.organizations && user.organizations.length > 0) {
+      selectOrganization(organizationId);
+    } else {
+      selectCompany(organizationId);
+    }
+
+    // Disparar evento para que otros componentes puedan reaccionar
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('organization-changed', { detail: { organizationId } }),
+      );
+    }
+  };
 
   const getActiveItem = () => {
     if (pathname === '/') return 'dashboard';
@@ -96,6 +134,47 @@ export default function BottomNav() {
             <SheetHeader>
               <SheetTitle>Menú</SheetTitle>
             </SheetHeader>
+
+            {/* Selector de Organización (Mobile) */}
+            <div className="mt-4">
+              <p className="text-xs font-medium text-muted-foreground mb-2">
+                Organización activa
+              </p>
+
+              {hasMultipleOrganizations ? (
+                <Select
+                  value={selectedId ? selectedId.toString() : undefined}
+                  onValueChange={(value) => {
+                    const id = Number(value);
+                    if (!Number.isNaN(id)) {
+                      handleOrganizationChange(id);
+                    }
+                  }}
+                >
+                  <SelectTrigger className="w-full md:w-auto">
+                    <SelectValue
+                      placeholder={currentOrg?.name || 'Seleccionar organización'}
+                    />
+                  </SelectTrigger>
+                  <SelectContent
+                    side="bottom"
+                    collisionPadding={10}
+                    className="max-w-[calc(100vw-20px)]"
+                  >
+                    {organizations.map((org) => (
+                      <SelectItem key={org.id} value={org.id.toString()}>
+                        {org.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="w-full rounded-md border border-border bg-secondary/30 px-3 py-2 text-sm">
+                  {currentOrg?.name || 'Mi Organización'}
+                </div>
+              )}
+            </div>
+
             <div className="mt-6 space-y-2">
               {filteredAdditionalItems.map((item) => {
                 const isActive = pathname.startsWith(item.href);

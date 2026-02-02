@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   BadRequestException,
   ConflictException,
+  NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '@/common/prisma/prisma.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
@@ -14,6 +15,114 @@ export class TenantsService {
   async findOne(id: string) {
     // TODO: Implementar búsqueda de tenant
     return null;
+  }
+
+  /**
+   * Alias de compatibilidad: algunos clientes llaman "findAll" para listar miembros.
+   */
+  async findAll(organizationId: number) {
+    return this.getMembers(organizationId);
+  }
+
+  /**
+   * Obtiene todos los miembros activos de una organización (multi-tenant)
+   * IMPORTANTE: Filtrar estrictamente por organizationId (sin companyId legacy)
+   */
+  async getMembers(organizationId: number) {
+    const members = await this.prisma.member.findMany({
+      where: {
+        organizationId,
+        status: 'ACTIVE',
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            fullName: true,
+            avatarUrl: true,
+          },
+        },
+      },
+      orderBy: {
+        joinedAt: 'desc',
+      },
+    });
+
+    return members.map((m) => ({
+      id: m.id,
+      userId: m.userId,
+      email: m.user.email,
+      fullName: m.user.fullName,
+      avatarUrl: m.user.avatarUrl,
+      role: m.role,
+      status: m.status,
+      joinedAt: m.joinedAt,
+    }));
+  }
+
+  /**
+   * Elimina (desactiva) un usuario de una organización.
+   * Reglas:
+   * - Un usuario no puede eliminarse a sí mismo
+   * - Solo OWNER o ADMIN puede eliminar (en este sistema, SUPER_ADMIN se considera OWNER)
+   *
+   * Nota: Se hace "soft-remove" de la membresía (status = SUSPENDED) para auditoría.
+   */
+  async removeUserFromOrganization(params: {
+    organizationId: number;
+    targetUserId: number;
+    requesterUserId: number;
+    requesterRole: unknown;
+  }) {
+    const { organizationId, targetUserId, requesterUserId, requesterRole } = params;
+
+    if (targetUserId === requesterUserId) {
+      throw new BadRequestException('No puedes eliminarte a ti mismo');
+    }
+
+    const role = String(requesterRole || '').toUpperCase().trim();
+    const canDelete = role === 'OWNER' || role === 'ADMIN' || role === 'SUPER_ADMIN';
+    if (!canDelete) {
+      throw new ForbiddenException('Solo un OWNER o ADMIN puede eliminar usuarios');
+    }
+
+    const membership = await this.prisma.member.findFirst({
+      where: {
+        userId: targetUserId,
+        organizationId,
+        status: 'ACTIVE',
+      },
+      include: {
+        user: {
+          select: { id: true, email: true, fullName: true },
+        },
+      },
+    });
+
+    if (!membership) {
+      throw new NotFoundException(
+        'El usuario no es un miembro activo de esta organización',
+      );
+    }
+
+    // Seguridad adicional: un ADMIN no puede eliminar un SUPER_ADMIN
+    if (role === 'ADMIN' && String(membership.role).toUpperCase() === 'SUPER_ADMIN') {
+      throw new ForbiddenException('Un ADMIN no puede eliminar un SUPER_ADMIN');
+    }
+
+    await this.prisma.member.update({
+      where: { id: membership.id },
+      data: { status: 'SUSPENDED' },
+    });
+
+    return {
+      message: 'Usuario eliminado de la organización',
+      userId: membership.userId,
+      email: membership.user.email,
+      fullName: membership.user.fullName,
+      organizationId,
+    };
   }
 
   /**
