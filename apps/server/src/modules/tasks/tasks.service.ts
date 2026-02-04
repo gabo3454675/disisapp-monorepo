@@ -8,6 +8,15 @@ import { PrismaService } from '@/common/prisma/prisma.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { TaskStatus, TaskPriority } from '@prisma/client';
 
+/** Peso jerárquico: mayor = más autoridad. Solo se puede asignar a usuarios con rol menor o igual. */
+const ROLE_ORDER: Record<string, number> = {
+  SUPER_ADMIN: 5,
+  ADMIN: 4,
+  MANAGER: 3,
+  SELLER: 2,
+  WAREHOUSE: 1,
+};
+
 @Injectable()
 export class TasksService {
   constructor(private prisma: PrismaService) {}
@@ -15,6 +24,7 @@ export class TasksService {
   /**
    * Crea una tarea y la asigna a un usuario.
    * Valida que creador y asignado pertenezcan a la misma organización.
+   * Valida que el rol del creador sea superior o igual al del asignado (ej: Cajero no puede asignar a Gerente).
    * La tarea se guarda con read: false para indicador visual de no leída.
    */
   async create(
@@ -47,6 +57,15 @@ export class TasksService {
     if (!assignedMembership) {
       throw new BadRequestException(
         'El usuario asignado no pertenece a esta organización o no está activo',
+      );
+    }
+
+    // Seguridad: el creador solo puede asignar a usuarios con rol inferior o igual al suyo
+    const creatorWeight = ROLE_ORDER[String(creatorMembership.role).toUpperCase()] ?? 0;
+    const assignedWeight = ROLE_ORDER[String(assignedMembership.role).toUpperCase()] ?? 0;
+    if (creatorWeight < assignedWeight) {
+      throw new ForbiddenException(
+        'No puedes asignar tareas a un usuario con rol superior al tuyo',
       );
     }
 

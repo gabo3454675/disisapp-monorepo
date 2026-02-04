@@ -7,10 +7,60 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '@/common/prisma/prisma.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
+import { UpdateOrganizationDto } from './dto/update-organization.dto';
+import { UpdateMemberRoleDto } from './dto/update-member-role.dto';
+import { Role } from '@prisma/client';
 
 @Injectable()
 export class TenantsService {
   constructor(private prisma: PrismaService) {}
+
+  /**
+   * Obtiene los datos de la organización actual (incluye exchangeRate).
+   */
+  async getOrganization(organizationId: number) {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: {
+        id: true,
+        nombre: true,
+        slug: true,
+        plan: true,
+        exchangeRate: true,
+      },
+    });
+    if (!org) {
+      throw new NotFoundException('Organización no encontrada');
+    }
+    return {
+      id: org.id,
+      name: org.nombre,
+      slug: org.slug,
+      plan: org.plan,
+      exchangeRate: org.exchangeRate ?? 1,
+    };
+  }
+
+  /**
+   * Actualiza la organización (p. ej. tasa de cambio). Solo ADMIN/SUPER_ADMIN.
+   */
+  async updateOrganization(
+    organizationId: number,
+    dto: UpdateOrganizationDto,
+  ) {
+    const data: { exchangeRate?: number } = {};
+    if (dto.exchangeRate !== undefined) {
+      data.exchangeRate = dto.exchangeRate;
+    }
+    if (Object.keys(data).length === 0) {
+      return this.getOrganization(organizationId);
+    }
+    await this.prisma.organization.update({
+      where: { id: organizationId },
+      data,
+    });
+    return this.getOrganization(organizationId);
+  }
 
   async findOne(id: string) {
     // TODO: Implementar búsqueda de tenant
@@ -34,15 +84,21 @@ export class TenantsService {
   };
 
   /**
-   * Obtiene todos los miembros activos de una organización (multi-tenant).
-   * Consulta explícitamente la tabla Member (OrganizationMember), NO CompanyMember (legacy).
-   * Incluye la relación user (nombre, email, avatar) y ordena por jerarquía de rol.
+   * Obtiene miembros de la organización según visibilidad del rol del solicitante.
+   * - SUPER_ADMIN / ADMIN: lista completa.
+   * - MANAGER: solo su equipo (SELLER, WAREHOUSE).
+   * - SELLER / WAREHOUSE: no pueden ver la lista (devolver vacío; el guard puede bloquear acceso).
    */
-  async getMembers(organizationId: number) {
+  async getMembers(organizationId: number, requesterRole?: string) {
+    const role = String(requesterRole || '').toUpperCase().trim();
+
     const members = await this.prisma.member.findMany({
       where: {
         organizationId,
         status: 'ACTIVE',
+        ...(role === 'MANAGER'
+          ? { role: { in: ['SELLER', 'WAREHOUSE'] } }
+          : {}),
       },
       include: {
         user: {
@@ -56,6 +112,11 @@ export class TenantsService {
       },
     });
 
+    // SELLER / WAREHOUSE: no ven a nadie (lista vacía)
+    if (role === 'SELLER' || role === 'WAREHOUSE') {
+      return [];
+    }
+
     const mapped = members.map((m) => ({
       id: m.id,
       userId: m.userId,
@@ -67,9 +128,8 @@ export class TenantsService {
       joinedAt: m.joinedAt,
     }));
 
-    // Ordenamiento jerárquico: SUPER_ADMIN > ADMIN > MANAGER > SELLER > WAREHOUSE
-    const roleWeight = (role: string) =>
-      TenantsService.ROLE_ORDER[String(role).toUpperCase()] ?? 0;
+    const roleWeight = (r: string) =>
+      TenantsService.ROLE_ORDER[String(r).toUpperCase()] ?? 0;
 
     mapped.sort((a, b) => {
       const diff = roleWeight(b.role) - roleWeight(a.role);
@@ -81,7 +141,110 @@ export class TenantsService {
   }
 
   /**
-   * Elimina (desactiva) un usuario de una organización.
+   * Actualiza el rol de un miembro.
+   * - Un ADMIN no puede cambiar el rol de un SUPER_ADMIN (OWNER).
+   * - Un ADMIN no puede promoverse a sí mismo a SUPER_ADMIN.
+   */
+  async updateMemberRole(
+    memberId: number,
+    organizationId: number,
+    dto: UpdateMemberRoleDto,
+    requesterUserId: number,
+    requesterRole: string,
+  ) {
+    const membership = await this.prisma.member.findFirst({
+      where: { id: memberId, organizationId, status: 'ACTIVE' },
+      include: { user: { select: { id: true, email: true, fullName: true } } },
+    });
+
+    if (!membership) {
+      throw new NotFoundException('Miembro no encontrado en esta organización');
+    }
+
+    const role = String(requesterRole).toUpperCase().trim();
+    const newRole = String(dto.newRole).toUpperCase().trim() as Role;
+
+    if (role !== 'SUPER_ADMIN' && role !== 'ADMIN') {
+      throw new ForbiddenException('Solo un administrador puede cambiar roles');
+    }
+
+    if (String(membership.role).toUpperCase() === 'SUPER_ADMIN' && role !== 'SUPER_ADMIN') {
+      throw new ForbiddenException('No puedes cambiar el rol del propietario (SUPER_ADMIN)');
+    }
+
+    if (membership.userId === requesterUserId && newRole === 'SUPER_ADMIN') {
+      throw new ForbiddenException('No puedes promoverse a ti mismo a propietario');
+    }
+
+    const updated = await this.prisma.member.update({
+      where: { id: memberId },
+      data: { role: newRole as Role },
+      include: {
+        user: { select: { id: true, email: true, fullName: true, avatarUrl: true } },
+      },
+    });
+
+    return {
+      id: updated.id,
+      userId: updated.userId,
+      email: updated.user.email,
+      fullName: updated.user.fullName,
+      avatarUrl: updated.user.avatarUrl,
+      role: updated.role,
+      status: updated.status,
+      joinedAt: updated.joinedAt,
+    };
+  }
+
+  /**
+   * Desactiva un miembro (soft delete: status = SUSPENDED).
+   * NO borra el User ni el historial (facturas, tareas siguen vinculadas al User).
+   */
+  async removeMemberByMemberId(
+    memberId: number,
+    organizationId: number,
+    requesterUserId: number,
+    requesterRole: string,
+  ) {
+    const membership = await this.prisma.member.findFirst({
+      where: { id: memberId, organizationId },
+      include: { user: { select: { id: true, email: true, fullName: true } } },
+    });
+
+    if (!membership) {
+      throw new NotFoundException('Miembro no encontrado en esta organización');
+    }
+
+    if (membership.userId === requesterUserId) {
+      throw new BadRequestException('No puedes desactivarte a ti mismo');
+    }
+
+    const role = String(requesterRole).toUpperCase().trim();
+    const canDelete = role === 'SUPER_ADMIN' || role === 'ADMIN';
+    if (!canDelete) {
+      throw new ForbiddenException('Solo un administrador puede desactivar miembros');
+    }
+
+    if (role === 'ADMIN' && String(membership.role).toUpperCase() === 'SUPER_ADMIN') {
+      throw new ForbiddenException('Un ADMIN no puede desactivar al propietario (SUPER_ADMIN)');
+    }
+
+    await this.prisma.member.update({
+      where: { id: memberId },
+      data: { status: 'SUSPENDED' },
+    });
+
+    return {
+      message: 'Usuario desactivado de la organización. Sus facturas y actividad se mantienen.',
+      userId: membership.userId,
+      email: membership.user.email,
+      fullName: membership.user.fullName,
+      organizationId,
+    };
+  }
+
+  /**
+   * Elimina (desactiva) un usuario de una organización por userId.
    * Reglas:
    * - Un usuario no puede eliminarse a sí mismo
    * - Solo OWNER o ADMIN puede eliminar (en este sistema, SUPER_ADMIN se considera OWNER)

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -20,6 +20,17 @@ import {
 } from '@/components/ui/select';
 import apiClient from '@/lib/api';
 import { Loader2 } from 'lucide-react';
+import { useAuthStore } from '@/store/useAuthStore';
+import { usePermission } from '@/hooks/usePermission';
+
+/** Jerarquía: mayor = más autoridad. Solo se pueden asignar tareas a usuarios con rol menor o igual. */
+const ROLE_ORDER: Record<string, number> = {
+  SUPER_ADMIN: 5,
+  ADMIN: 4,
+  MANAGER: 3,
+  SELLER: 2,
+  WAREHOUSE: 1,
+};
 
 type OrgMember = {
   id: number;
@@ -42,12 +53,25 @@ export function AssignTaskModal({
   invoiceId,
   onSuccess,
 }: AssignTaskModalProps) {
+  const { user } = useAuthStore();
+  const { role: currentUserRole } = usePermission();
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [note, setNote] = useState('');
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const currentUserId = user?.id ?? 0;
+  const currentWeight = ROLE_ORDER[String(currentUserRole).toUpperCase()] ?? 0;
+
+  const assignableMembers = useMemo(() => {
+    return members.filter((m) => {
+      if (m.userId === currentUserId) return false;
+      const memberWeight = ROLE_ORDER[String(m.role).toUpperCase()] ?? 0;
+      return memberWeight <= currentWeight;
+    });
+  }, [members, currentUserId, currentWeight]);
 
   useEffect(() => {
     if (!open) return;
@@ -108,15 +132,23 @@ export function AssignTaskModal({
             <Select
               value={selectedUserId}
               onValueChange={setSelectedUserId}
-              disabled={loadingMembers}
+              disabled={loadingMembers || assignableMembers.length === 0}
             >
               <SelectTrigger id="user">
-                <SelectValue placeholder={loadingMembers ? 'Cargando...' : 'Selecciona un usuario'} />
+                <SelectValue
+                  placeholder={
+                    loadingMembers
+                      ? 'Cargando...'
+                      : assignableMembers.length === 0
+                        ? 'No hay empleados asignables (por jerarquía)'
+                        : 'Selecciona un usuario'
+                  }
+                />
               </SelectTrigger>
               <SelectContent>
-                {members.map((m) => (
+                {assignableMembers.map((m) => (
                   <SelectItem key={m.userId} value={String(m.userId)}>
-                    {m.fullName || m.email}
+                    {m.fullName || m.email} ({m.role})
                   </SelectItem>
                 ))}
               </SelectContent>

@@ -21,7 +21,10 @@ interface Product {
   stock: number;
   imageUrl?: string | null;
   minStock: number;
+  isExempt?: boolean;
 }
+
+type CurrencyMode = 'BS' | 'USD';
 
 interface Customer {
   id: number;
@@ -48,6 +51,7 @@ export default function POSPage() {
   const [processing, setProcessing] = useState(false);
   const [success, setSuccess] = useState(false);
   const [lastInvoiceId, setLastInvoiceId] = useState<number | null>(null);
+  const [currencyMode, setCurrencyMode] = useState<CurrencyMode>('USD');
 
   // Cargar productos
   const fetchProducts = useCallback(async () => {
@@ -131,13 +135,35 @@ export default function POSPage() {
     setCart((prevCart) => prevCart.filter((item) => item.product.id !== productId));
   };
 
-  // Calcular totales (memoizado para evitar recálculos innecesarios)
-  const subtotal = useMemo(
-    () => cart.reduce((sum, item) => sum + Number(item.product.salePrice) * item.quantity, 0),
-    [cart]
-  );
-  const tax = useMemo(() => 0, []); // Por ahora sin impuestos
-  const total = useMemo(() => subtotal + tax, [subtotal, tax]);
+  // Cálculo de totales con IVA (Bs) o IGFT ($)
+  // Bs: IVA 16% solo sobre productos NO exentos. $: IGFT 3% sobre todo el total.
+  const { subtotal, tax, taxLabel, total } = useMemo(() => {
+    const sub = cart.reduce((sum, item) => sum + Number(item.product.salePrice) * item.quantity, 0);
+    const isExempt = (p: Product) => p.isExempt === true;
+
+    if (currencyMode === 'BS') {
+      const nonExemptSum = cart.reduce(
+        (sum, item) =>
+          sum + (isExempt(item.product) ? 0 : Number(item.product.salePrice) * item.quantity),
+        0
+      );
+      const exemptSum = sub - nonExemptSum;
+      const iva = nonExemptSum * 0.16;
+      return {
+        subtotal: sub,
+        tax: iva,
+        taxLabel: 'IVA (16%)',
+        total: nonExemptSum * 1.16 + exemptSum,
+      };
+    }
+    const igft = sub * 0.03;
+    return {
+      subtotal: sub,
+      tax: igft,
+      taxLabel: 'IGFT (3%)',
+      total: sub * 1.03,
+    };
+  }, [cart, currencyMode]);
 
   // Procesar venta
   const handleCheckout = async () => {
@@ -177,10 +203,11 @@ export default function POSPage() {
     }
   };
 
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amount: number, forceCurrency?: CurrencyMode) => {
+    const mode = forceCurrency ?? currencyMode;
     return new Intl.NumberFormat('es-VE', {
       style: 'currency',
-      currency: 'USD',
+      currency: mode === 'BS' ? 'VES' : 'USD',
       minimumFractionDigits: 2,
     }).format(amount);
   };
@@ -314,6 +341,31 @@ export default function POSPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="flex-1 flex flex-col min-h-0">
+              {/* Selector de Moneda: Bolívares / Dólares */}
+              <div className="mb-4">
+                <Label className="block mb-2">Moneda de pago</Label>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant={currencyMode === 'BS' ? 'default' : 'outline'}
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => setCurrencyMode('BS')}
+                  >
+                    Bolívares
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={currencyMode === 'USD' ? 'default' : 'outline'}
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => setCurrencyMode('USD')}
+                  >
+                    Dólares
+                  </Button>
+                </div>
+              </div>
+
               {/* Selector de Cliente */}
               <div className="mb-4">
                 <Label htmlFor="customer">Cliente</Label>
@@ -393,14 +445,14 @@ export default function POSPage() {
                 )}
               </div>
 
-              {/* Resumen financiero */}
+              {/* Resumen financiero: Subtotal, Impuesto (IVA/IGFT), Total */}
               <div className="space-y-2 pt-4 border-t border-border">
                 <div className="flex justify-between text-sm">
                   <span>Subtotal</span>
                   <span>{formatCurrency(subtotal)}</span>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span>Impuestos</span>
+                <div className="flex justify-between text-sm text-muted-foreground">
+                  <span>{taxLabel}</span>
                   <span>{formatCurrency(tax)}</span>
                 </div>
                 <div className="flex justify-between font-bold text-lg pt-2 border-t border-border">

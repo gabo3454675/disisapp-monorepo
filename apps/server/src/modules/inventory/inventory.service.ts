@@ -8,15 +8,17 @@ export class InventoryService {
   constructor(private prisma: PrismaService) {}
 
   /**
-   * Plantilla oficial del importador de inventario (headers exactos).
-   * Mantener estos strings sincronizados con el parser de Excel.
+   * Plantilla oficial del importador de inventario (columnas exactas).
+   * A: SKU, B: NOMBRE, C: PRECIO, D: STOCK, E: DESCRIPCION, F: EXENTO.
+   * Mantener sincronizado con el parser de Excel.
    */
   static readonly INVENTORY_IMPORT_HEADERS = [
     'SKU',
-    'Nombre del Producto',
-    'Precio Venta',
-    'Stock Inicial',
-    'Descripción',
+    'NOMBRE',
+    'PRECIO',
+    'STOCK',
+    'DESCRIPCION',
+    'EXENTO',
   ] as const;
 
   private static readonly HEADER_NOTES: Record<
@@ -24,10 +26,11 @@ export class InventoryService {
     string
   > = {
     SKU: 'SKU: Obligatorio. Debe ser único por organización. Ej: ABC-001',
-    'Nombre del Producto': 'Nombre del Producto: Obligatorio. Texto.',
-    'Precio Venta': 'Precio Venta: Obligatorio. Solo números (ej: 10.50).',
-    'Stock Inicial': 'Stock Inicial: Obligatorio. Entero >= 0.',
-    Descripción: 'Descripción: Opcional. Texto libre.',
+    NOMBRE: 'NOMBRE: Obligatorio. Nombre del producto.',
+    PRECIO: 'PRECIO: Obligatorio. Solo números (ej: 10.50).',
+    STOCK: 'STOCK: Obligatorio. Entero >= 0.',
+    DESCRIPCION: 'DESCRIPCION: Opcional. Texto libre.',
+    EXENTO: 'EXENTO: SI o NO (impuesto). Use el desplegable.',
   };
 
   getTemplateFormat() {
@@ -35,27 +38,28 @@ export class InventoryService {
       headers: [...InventoryService.INVENTORY_IMPORT_HEADERS],
       exampleRow: {
         SKU: 'ABC-001',
-        'Nombre del Producto': 'Café 250g',
-        'Precio Venta': 4.99,
-        'Stock Inicial': 20,
-        Descripción: 'Café molido, presentación 250g',
+        NOMBRE: 'Café 250g',
+        PRECIO: 4.99,
+        STOCK: 20,
+        DESCRIPCION: 'Café molido, presentación 250g',
+        EXENTO: 'NO',
       },
       notes: [
         'La primera fila debe contener exactamente estos headers (mismos textos).',
         'SKU es obligatorio y debe ser único por organización.',
-        'Precio Venta debe ser numérico (ej: 10.5).',
-        'Stock Inicial debe ser entero >= 0.',
+        'PRECIO debe ser numérico (ej: 10.5). STOCK entero >= 0.',
+        'EXENTO: use el desplegable (SI o NO).',
       ],
     };
   }
 
   /**
    * Genera un archivo Excel (.xlsx) de plantilla descargable.
+   * Columnas: A: SKU, B: NOMBRE, C: PRECIO, D: STOCK, E: DESCRIPCION, F: EXENTO.
    * Incluye:
-   * - Headers exactos
-   * - Notas/comentarios en cada header (requisito UX)
-   * - Ancho de columnas legible
-   * - Freeze de encabezados
+   * - Headers exactos en negrita
+   * - Validación lista en F (EXENTO): "SI", "NO" para 1000 filas (dropdown)
+   * - Notas en headers, anchos de columna ajustados, freeze de encabezados
    */
   async generateTemplateXlsxBuffer() {
     const workbook = new ExcelJS.Workbook();
@@ -64,44 +68,53 @@ export class InventoryService {
 
     const worksheet = workbook.addWorksheet('Inventario');
 
-    // Header
+    // Columnas exactas: A: SKU, B: NOMBRE, C: PRECIO, D: STOCK, E: DESCRIPCION, F: EXENTO
     const headers = [...InventoryService.INVENTORY_IMPORT_HEADERS];
     worksheet.addRow(headers);
 
     const headerRow = worksheet.getRow(1);
     headerRow.font = { bold: true };
     headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+    headerRow.height = 22;
 
-    // Notas en headers (ExcelJS: cell.note)
+    // Notas en cada header
     headers.forEach((header, idx) => {
       const cell = worksheet.getRow(1).getCell(idx + 1);
       cell.note = InventoryService.HEADER_NOTES[header];
     });
 
-    // Fila de ejemplo (mismo orden de columnas)
+    // Fila de ejemplo
     worksheet.addRow([
       'ABC-001',
       'Café 250g',
       4.99,
       20,
       'Café molido, presentación 250g',
+      'NO',
     ]);
 
-    // Anchos sugeridos
-    worksheet.columns = [
-      { key: 'sku', width: 18 },
-      { key: 'name', width: 28 },
-      { key: 'price', width: 14 },
-      { key: 'stock', width: 14 },
-      { key: 'desc', width: 40 },
-    ];
+    // Validación de datos en columna F (EXENTO): lista "SI", "NO" — 1000 filas (F2:F1001)
+    worksheet.dataValidations.add('F2:F1001', {
+      type: 'list',
+      allowBlank: true,
+      formulae: ['"SI,NO"'],
+      showErrorMessage: true,
+      errorTitle: 'Valor no permitido',
+      error: 'Seleccione SI o NO.',
+    });
 
-    // Congelar headers
+    // Anchos de columnas para lectura fácil
+    worksheet.getColumn(1).width = 16;  // A: SKU
+    worksheet.getColumn(2).width = 32;   // B: NOMBRE
+    worksheet.getColumn(3).width = 14;   // C: PRECIO
+    worksheet.getColumn(4).width = 12;   // D: STOCK
+    worksheet.getColumn(5).width = 42;   // E: DESCRIPCION
+    worksheet.getColumn(6).width = 12;   // F: EXENTO
+
     worksheet.views = [{ state: 'frozen', ySplit: 1 }];
 
-    // Formatos básicos
-    worksheet.getColumn(3).numFmt = '#,##0.00'; // Precio
-    worksheet.getColumn(4).numFmt = '0'; // Stock
+    worksheet.getColumn(3).numFmt = '#,##0.00'; // PRECIO
+    worksheet.getColumn(4).numFmt = '0';       // STOCK
 
     return workbook.xlsx.writeBuffer();
   }
@@ -194,6 +207,7 @@ export class InventoryService {
       price: number;
       stock: number;
       description: string | null;
+      isExempt: boolean;
       action: 'create' | 'update' | 'skip';
     };
 
@@ -202,12 +216,13 @@ export class InventoryService {
 
     const seenSku = new Set<string>();
 
-    // Columnas (1-based)
+    // Columnas (1-based): A: SKU, B: NOMBRE, C: PRECIO, D: STOCK, E: DESCRIPCION, F: EXENTO
     const COL_SKU = 1;
     const COL_NAME = 2;
     const COL_PRICE = 3;
     const COL_STOCK = 4;
     const COL_DESC = 5;
+    const COL_EXENTO = 6;
 
     for (let rowNum = 2; rowNum <= worksheet.rowCount; rowNum++) {
       const row = worksheet.getRow(rowNum);
@@ -217,6 +232,7 @@ export class InventoryService {
       const price = this.parseNumber(row.getCell(COL_PRICE)?.value);
       const stock = this.parseIntSafe(row.getCell(COL_STOCK)?.value);
       const description = String(row.getCell(COL_DESC)?.value ?? '').trim() || null;
+      const exento = String(row.getCell(COL_EXENTO)?.value ?? '').trim().toUpperCase() || null;
 
       // Ignorar filas completamente vacías
       if (!sku && !name && (Number.isNaN(price) || price === 0) && (Number.isNaN(stock) || stock === 0) && !description) {
@@ -241,27 +257,38 @@ export class InventoryService {
       if (!name) {
         errors.push({
           row: rowNum,
-          field: 'Nombre del Producto',
-          message: 'Nombre del Producto es requerido',
+          field: 'NOMBRE',
+          message: 'NOMBRE es requerido',
         });
         continue;
       }
       if (Number.isNaN(price) || price < 0) {
         errors.push({
           row: rowNum,
-          field: 'Precio Venta',
-          message: 'Precio Venta debe ser numérico y >= 0',
+          field: 'PRECIO',
+          message: 'PRECIO debe ser numérico y >= 0',
         });
         continue;
       }
       if (Number.isNaN(stock) || stock < 0) {
         errors.push({
           row: rowNum,
-          field: 'Stock Inicial',
-          message: 'Stock Inicial debe ser entero y >= 0',
+          field: 'STOCK',
+          message: 'STOCK debe ser entero y >= 0',
         });
         continue;
       }
+      if (exento && exento !== 'SI' && exento !== 'NO') {
+        errors.push({
+          row: rowNum,
+          field: 'EXENTO',
+          message: 'EXENTO debe ser SI o NO',
+        });
+        continue;
+      }
+
+      // EXENTO: "SI" -> isExempt true; "NO" o vacío -> false
+      const isExempt = exento === 'SI';
 
       previewRowsRaw.push({
         rowNumber: rowNum,
@@ -270,6 +297,7 @@ export class InventoryService {
         price,
         stock,
         description,
+        isExempt,
       });
     }
 
@@ -338,6 +366,7 @@ export class InventoryService {
             costPrice: 0 as any,
             stock: r.stock,
             minStock: 5,
+            isExempt: r.isExempt,
           })),
         });
         createdCount = created.count;
@@ -353,6 +382,7 @@ export class InventoryService {
               description: r.description,
               salePrice: r.price as any,
               stock: r.stock,
+              isExempt: r.isExempt,
             },
           }),
         ),

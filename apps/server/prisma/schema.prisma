@@ -101,6 +101,7 @@ model Organization {
   nombre        String          // Nombre de la organización
   slug          String          @unique // Slug único para URLs (ej: "mi-empresa")
   plan          Plan            @default(FREE)
+  exchangeRate  Float           @default(1.0) // Tasa BCV/Paralelo (USD/VES u otra moneda)
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
@@ -190,6 +191,7 @@ model Product {
   stock         Int      @default(0)
   imageUrl      String?
   minStock      Int      @default(5) // Alerta de stock bajo
+  isExempt      Boolean  @default(false) // Exento de impuesto (columna EXENTO en plantilla: SI/NO)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

@@ -11,9 +11,10 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Download, Loader2, Search, FileText } from 'lucide-react';
+import { Download, Loader2, Search, FileText, UserPlus } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { InvoiceDetailSheet } from '@/components/invoice-detail-sheet';
+import { AssignTaskModal } from '@/components/assign-task-modal';
 import apiClient from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
 
@@ -51,6 +52,8 @@ export default function InvoicesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [detailInvoiceId, setDetailInvoiceId] = useState<number | null>(null);
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [assignModalInvoiceId, setAssignModalInvoiceId] = useState<number | null>(null);
 
   const fetchInvoices = useCallback(async () => {
     if (!selectedCompanyId) return;
@@ -192,7 +195,7 @@ export default function InvoicesPage() {
                         </span>
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex items-center justify-end gap-2 flex-wrap">
                           <Button
                             variant="outline"
                             size="sm"
@@ -203,6 +206,17 @@ export default function InvoicesPage() {
                           >
                             <FileText className="mr-2 h-4 w-4" />
                             Ver detalle
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setAssignModalInvoiceId(invoice.id);
+                              setAssignModalOpen(true);
+                            }}
+                          >
+                            <UserPlus className="mr-2 h-4 w-4" />
+                            Asignar Revisión
                           </Button>
                           <Button
                             variant="outline"
@@ -229,6 +243,18 @@ export default function InvoicesPage() {
         onOpenChange={setDetailSheetOpen}
         onRefresh={fetchInvoices}
       />
+
+      {assignModalInvoiceId != null && (
+        <AssignTaskModal
+          open={assignModalOpen}
+          onOpenChange={(open) => {
+            setAssignModalOpen(open);
+            if (!open) setAssignModalInvoiceId(null);
+          }}
+          invoiceId={assignModalInvoiceId}
+          onSuccess={fetchInvoices}
+        />
+      )}
     </div>
   );
 }

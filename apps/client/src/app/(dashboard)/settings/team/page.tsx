@@ -28,12 +28,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Plus, Loader2, UserPlus, Mail, Shield, User, Copy, Check, Link2 } from 'lucide-react';
+import { Plus, Loader2, UserPlus, Mail, Shield, User, Copy, Check, Link2, TrendingUp, Trash2 } from 'lucide-react';
 import apiClient from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePermission } from '@/hooks/usePermission';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { toast } from 'sonner';
 
 interface Member {
   id: number;
@@ -46,9 +47,18 @@ interface Member {
   joinedAt: string;
 }
 
+const ROLES_FOR_SELECT: { value: 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'SELLER' | 'WAREHOUSE'; label: string }[] = [
+  { value: 'SUPER_ADMIN', label: 'Super Administrador' },
+  { value: 'ADMIN', label: 'Administrador' },
+  { value: 'MANAGER', label: 'Gerente' },
+  { value: 'SELLER', label: 'Cajero/Vendedor' },
+  { value: 'WAREHOUSE', label: 'Almacén' },
+];
+
 export default function TeamPage() {
-  const { selectedOrganizationId, selectedCompanyId } = useAuthStore();
-  const { canManageTeam, isSuperAdmin } = usePermission();
+  const { user, selectedOrganizationId, selectedCompanyId, getCurrentOrganization, setOrganizationExchangeRate } = useAuthStore();
+  const { canManageTeam, isSuperAdmin, isAdmin } = usePermission();
+  const currentUserId = user?.id ?? 0;
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
@@ -60,6 +70,15 @@ export default function TeamPage() {
     email: '',
     role: 'SELLER' as 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'SELLER' | 'WAREHOUSE',
   });
+  const currentOrg = getCurrentOrganization();
+  const orgWithRate = currentOrg && 'exchangeRate' in currentOrg ? currentOrg : null;
+  const [exchangeRate, setExchangeRate] = useState<string>(
+    orgWithRate?.exchangeRate != null ? String(orgWithRate.exchangeRate) : '1'
+  );
+  const [savingRate, setSavingRate] = useState(false);
+  const [updatingRoleMemberId, setUpdatingRoleMemberId] = useState<number | null>(null);
+  const [deactivatingMemberId, setDeactivatingMemberId] = useState<number | null>(null);
+  const [confirmDeactivate, setConfirmDeactivate] = useState<Member | null>(null);
 
   const organizationId = selectedOrganizationId || selectedCompanyId;
 
@@ -68,7 +87,7 @@ export default function TeamPage() {
 
     try {
       setLoading(true);
-      const response = await apiClient.get<Member[]>('/tenants/users');
+      const response = await apiClient.get<Member[]>('/tenants/organization/members');
       setMembers(Array.isArray(response.data) ? response.data : []);
     } catch (error: any) {
       console.error('Error fetching members:', error);
@@ -83,6 +102,32 @@ export default function TeamPage() {
   useEffect(() => {
     fetchMembers();
   }, [fetchMembers]);
+
+  useEffect(() => {
+    if (orgWithRate?.exchangeRate != null) {
+      setExchangeRate(String(orgWithRate.exchangeRate));
+    }
+  }, [orgWithRate?.exchangeRate]);
+
+  const handleSaveExchangeRate = async () => {
+    if (!organizationId) return;
+    const num = parseFloat(exchangeRate.replace(',', '.'));
+    if (Number.isNaN(num) || num <= 0) {
+      alert('Ingresa una tasa válida mayor a 0');
+      return;
+    }
+    setSavingRate(true);
+    try {
+      const { data } = await apiClient.patch<{ exchangeRate: number }>('/tenants/organization', { exchangeRate: num });
+      setOrganizationExchangeRate(organizationId, data.exchangeRate);
+      setExchangeRate(String(data.exchangeRate));
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Error al guardar la tasa';
+      alert(msg);
+    } finally {
+      setSavingRate(false);
+    }
+  };
 
   const handleOpenInviteDialog = () => {
     setInviteFormData({ email: '', role: 'SELLER' });
@@ -190,6 +235,55 @@ export default function TeamPage() {
     return member.email.slice(0, 2).toUpperCase();
   };
 
+  const canChangeRole = (member: Member) => {
+    if (member.role === 'SUPER_ADMIN' && !isSuperAdmin) return false;
+    return isSuperAdmin || isAdmin;
+  };
+
+  const handleRoleChange = async (member: Member, newRole: 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'SELLER' | 'WAREHOUSE') => {
+    if (newRole === member.role) return;
+    setUpdatingRoleMemberId(member.id);
+    try {
+      await apiClient.patch(`/tenants/organization/members/${member.id}/role`, { newRole });
+      setMembers((prev) =>
+        prev.map((m) => (m.id === member.id ? { ...m, role: newRole } : m))
+      );
+      toast.success('Rol actualizado', {
+        description: `${member.fullName || member.email} ahora es ${getRoleLabel(newRole)}.`,
+      });
+    } catch (err: any) {
+      toast.error('Error al cambiar el rol', {
+        description: err?.response?.data?.message || 'No se pudo actualizar el rol.',
+      });
+    } finally {
+      setUpdatingRoleMemberId(null);
+    }
+  };
+
+  const handleDesactivarClick = (member: Member) => {
+    setConfirmDeactivate(member);
+  };
+
+  const handleConfirmDeactivate = async () => {
+    if (!confirmDeactivate) return;
+    const name = confirmDeactivate.fullName || confirmDeactivate.email;
+    setDeactivatingMemberId(confirmDeactivate.id);
+    try {
+      await apiClient.delete(`/tenants/organization/members/${confirmDeactivate.id}`);
+      setMembers((prev) => prev.filter((m) => m.id !== confirmDeactivate.id));
+      setConfirmDeactivate(null);
+      toast.success('Usuario desactivado', {
+        description: `${name} ya no tiene acceso a la organización. Sus facturas se mantienen.`,
+      });
+    } catch (err: any) {
+      toast.error('Error al desactivar', {
+        description: err?.response?.data?.message || 'No se pudo desactivar al usuario.',
+      });
+    } finally {
+      setDeactivatingMemberId(null);
+    }
+  };
+
   if (!canManageTeam) {
     return (
       <div className="p-4 md:p-8 max-w-7xl mx-auto">
@@ -221,6 +315,38 @@ export default function TeamPage() {
           </Button>
         </div>
 
+        {/* Tasa de cambio - Solo Admin */}
+        {canManageTeam && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="h-5 w-5" />
+                Tasa BCV / Paralelo
+              </CardTitle>
+              <CardDescription>
+                Tasa de cambio para conversiones (ej. USD a VES). Solo usuarios con permisos de administración pueden modificarla.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-wrap items-end gap-4">
+              <div className="space-y-2 flex-1 min-w-[140px]">
+                <Label htmlFor="exchangeRate">Tasa actual</Label>
+                <Input
+                  id="exchangeRate"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="36.50"
+                  value={exchangeRate}
+                  onChange={(e) => setExchangeRate(e.target.value)}
+                />
+              </div>
+              <Button onClick={handleSaveExchangeRate} disabled={savingRate}>
+                {savingRate ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {savingRate ? ' Guardando...' : 'Guardar tasa'}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Members Table */}
         <Card>
           <CardHeader>
@@ -247,6 +373,7 @@ export default function TeamPage() {
                     <TableHead>Email</TableHead>
                     <TableHead>Rol</TableHead>
                     <TableHead>Fecha de Ingreso</TableHead>
+                    <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -277,13 +404,40 @@ export default function TeamPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={getRoleBadgeClassName(member.role)}
-                        >
-                          <Shield className="h-3 w-3 mr-1" />
-                          {getRoleLabel(member.role)}
-                        </Badge>
+                        {canChangeRole(member) ? (
+                          <Select
+                            value={member.role}
+                            onValueChange={(value: 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'SELLER' | 'WAREHOUSE') =>
+                              handleRoleChange(member, value)
+                            }
+                            disabled={updatingRoleMemberId === member.id}
+                          >
+                            <SelectTrigger className={getRoleBadgeClassName(member.role) + ' w-[180px]'}>
+                              {updatingRoleMemberId === member.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <SelectValue />
+                              )}
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ROLES_FOR_SELECT.filter(
+                                (r) => isSuperAdmin || r.value !== 'SUPER_ADMIN'
+                              ).map((r) => (
+                                <SelectItem key={r.value} value={r.value}>
+                                  {r.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className={getRoleBadgeClassName(member.role)}
+                          >
+                            <Shield className="h-3 w-3 mr-1" />
+                            {getRoleLabel(member.role)}
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell>
                         {new Date(member.joinedAt).toLocaleDateString('es-VE', {
@@ -291,6 +445,25 @@ export default function TeamPage() {
                           month: 'long',
                           day: 'numeric',
                         })}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {member.userId !== currentUserId &&
+                          (member.role !== 'SUPER_ADMIN' || isSuperAdmin) && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                              onClick={() => handleDesactivarClick(member)}
+                              disabled={deactivatingMemberId === member.id}
+                              title="Desactivar usuario"
+                            >
+                              {deactivatingMemberId === member.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-4 w-4" />
+                              )}
+                            </Button>
+                          )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -368,6 +541,34 @@ export default function TeamPage() {
                   Enviar Invitación
                 </>
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmación Desactivar miembro */}
+      <Dialog
+        open={!!confirmDeactivate}
+        onOpenChange={(open) => !open && setConfirmDeactivate(null)}
+      >
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Desactivar usuario</DialogTitle>
+            <DialogDescription>
+              ¿Seguro? El usuario perderá acceso a la organización, pero sus facturas y actividad se mantendrán.
+            </DialogDescription>
+          </DialogHeader>
+          {confirmDeactivate && (
+            <p className="text-sm text-muted-foreground py-2">
+              <strong>{confirmDeactivate.fullName || confirmDeactivate.email}</strong> ya no podrá iniciar sesión en esta organización.
+            </p>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmDeactivate(null)}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={handleConfirmDeactivate} disabled={!!deactivatingMemberId}>
+              {deactivatingMemberId ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Desactivar'}
             </Button>
           </DialogFooter>
         </DialogContent>

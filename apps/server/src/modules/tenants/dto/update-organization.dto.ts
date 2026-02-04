@@ -1,0 +1,9 @@
+import { IsNumber, Min, Max, IsOptional } from 'class-validator';
+
+export class UpdateOrganizationDto {
+  @IsOptional()
+  @IsNumber()
+  @Min(0.0001, { message: 'La tasa debe ser mayor a 0' })
+  @Max(999999.9999, { message: 'La tasa no puede ser tan alta' })
+  exchangeRate?: number;
+}

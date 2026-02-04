@@ -16,6 +16,7 @@ export interface Organization {
   slug: string;
   plan: string;
   role: string;
+  exchangeRate?: number;
 }
 
 interface User {
@@ -42,6 +43,7 @@ interface AuthState {
   getCurrentOrganization: () => Organization | Company | null;
   hasOrganizations: () => boolean;
   getOrganizations: () => Organization[];
+  setOrganizationExchangeRate: (organizationId: number, exchangeRate: number) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -223,6 +225,15 @@ export const useAuthStore = create<AuthState>()(
           plan: 'FREE',
           role: c.role,
         }));
+      },
+      setOrganizationExchangeRate: (organizationId: number, exchangeRate: number) => {
+        const state = get();
+        const orgs = state.user?.organizations;
+        if (!orgs) return;
+        const updated = orgs.map((o) =>
+          o.id === organizationId ? { ...o, exchangeRate } : o
+        );
+        set({ user: state.user ? { ...state.user, organizations: updated } : null });
       },
     }),
     {

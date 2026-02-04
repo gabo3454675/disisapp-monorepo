@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { MoreVertical, TrendingUp, Users, FileText, AlertCircle, Loader2 } from 'lucide-react';
+import { MoreVertical, TrendingUp, Users, FileText, AlertCircle, Loader2, ListTodo, ExternalLink } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -66,11 +66,25 @@ const DEFAULT_SUMMARY: DashboardSummary = {
   recentTransactions: [],
 };
 
+interface PendingTask {
+  id: number;
+  title: string;
+  description?: string | null;
+  status: string;
+  priority: string;
+  createdAt: string;
+  createdBy: { id: number; fullName: string | null; email: string };
+  organization: { id: number; nombre: string };
+  invoice?: { id: number; totalAmount: unknown; status: string } | null;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const { isAuthenticated, user, selectedCompanyId, _hasHydrated } = useAuthStore();
   const { canViewFinancialCharts } = usePermission();
   const [summary, setSummary] = useState<DashboardSummary>(DEFAULT_SUMMARY);
+  const [pendingTasks, setPendingTasks] = useState<PendingTask[]>([]);
+  const [loadingTasks, setLoadingTasks] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -110,6 +124,25 @@ export default function DashboardPage() {
       setLoading(false);
     }
   }, [selectedCompanyId]);
+
+  const fetchMyPendingTasks = useCallback(async () => {
+    if (!isAuthenticated) return;
+    try {
+      setLoadingTasks(true);
+      const res = await apiClient.get<PendingTask[]>('/tasks/my-pending');
+      setPendingTasks(Array.isArray(res.data) ? res.data : []);
+    } catch {
+      setPendingTasks([]);
+    } finally {
+      setLoadingTasks(false);
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (mounted && _hasHydrated && isAuthenticated) {
+      fetchMyPendingTasks();
+    }
+  }, [mounted, _hasHydrated, isAuthenticated, fetchMyPendingTasks]);
 
   useEffect(() => {
     if (mounted && _hasHydrated && !isAuthenticated) {
@@ -228,6 +261,61 @@ export default function DashboardPage() {
               sparklineData={generateSparklineData(summary.recentTransactions.length)}
             />
           </div>
+
+          {/* Mis Tareas Pendientes */}
+          <Card className="mb-8 bg-card border-border">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ListTodo className="h-5 w-5" />
+                Mis Tareas Pendientes
+              </CardTitle>
+              <CardDescription>Tareas asignadas a ti (pendientes o en progreso)</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {loadingTasks ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : pendingTasks.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">No tienes tareas pendientes</p>
+              ) : (
+                <div className="space-y-3">
+                  {pendingTasks.map((task) => (
+                    <div
+                      key={task.id}
+                      className="flex items-start justify-between gap-4 p-4 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-foreground">{task.title}</p>
+                        {task.description && (
+                          <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{task.description}</p>
+                        )}
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Asignada por {task.createdBy?.fullName || task.createdBy?.email} • {task.organization?.nombre}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {task.invoice && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => router.push(`/invoices?highlight=${task.invoice?.id}`)}
+                            className="text-xs"
+                          >
+                            <ExternalLink className="h-3 w-3 mr-1" />
+                            Ver factura #{task.invoice.id}
+                          </Button>
+                        )}
+                        <Badge variant={task.status === 'IN_PROGRESS' ? 'default' : 'secondary'} className="text-xs">
+                          {task.status === 'PENDING' ? 'Pendiente' : task.status === 'IN_PROGRESS' ? 'En progreso' : task.status}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Gráficos financieros - Solo para SUPER_ADMIN/ADMIN/MANAGER */}
           {canViewFinancialCharts && (

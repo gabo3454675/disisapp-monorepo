@@ -38,6 +38,7 @@ interface Product {
   stock: number;
   minStock: number;
   imageUrl?: string | null;
+  isExempt?: boolean;
 }
 
 export default function ProductsPage() {
@@ -285,21 +286,28 @@ export default function ProductsPage() {
                 try {
                   const formData = new FormData();
                   formData.append('file', file);
+                  formData.append('confirm', 'true');
 
-                  const response = await apiClient.post('/products/upload-excel', formData, {
+                  const response = await apiClient.post('/inventory/import', formData, {
                     headers: {
                       'Content-Type': 'multipart/form-data',
                     },
                   });
 
-                  const { created, updated, total, errors } = response.data;
-                  
+                  const data = response.data as { created?: number; updated?: number; summary?: { toCreate?: number; toUpdate?: number }; errors?: Array<{ message?: string } | string> };
+                  const created = data.created ?? 0;
+                  const updated = data.updated ?? 0;
+                  const total = created + updated;
+                  const errors = Array.isArray(data.errors)
+                    ? data.errors.map((err) => (typeof err === 'string' ? err : err?.message ?? 'Error'))
+                    : [];
+
                   setImportProgress({
                     uploading: false,
                     created,
                     updated,
                     total,
-                    errors: errors || [],
+                    errors,
                   });
 
                   // Recargar productos después de 2 segundos para mostrar el resumen
@@ -309,9 +317,13 @@ export default function ProductsPage() {
                   }, 3000);
                 } catch (error: any) {
                   console.error('Error importing products:', error);
+                  const errData = error.response?.data;
+                  const errors = Array.isArray(errData?.errors)
+                    ? errData.errors.map((e: { message?: string } | string) => (typeof e === 'string' ? e : e?.message ?? 'Error'))
+                    : [errData?.message || 'Error al importar productos'];
                   setImportProgress({
                     uploading: false,
-                    errors: [error.response?.data?.message || 'Error al importar productos'],
+                    errors,
                   });
                   
                   setTimeout(() => {

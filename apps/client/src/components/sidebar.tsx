@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { ChevronLeft, Grid2x2, ShoppingCart, Box, ChevronDown, LogOut, Check, DollarSign, FileText, Users, Settings } from 'lucide-react';
+import { ChevronLeft, Grid2x2, ShoppingCart, Box, ChevronDown, LogOut, Check, DollarSign, FileText, Users, Settings, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
@@ -16,6 +16,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePermission } from '@/hooks/usePermission';
+import { usePWAInstall } from '@/hooks/usePWAInstall';
 
 const navigationItems = [
   { id: 'dashboard', label: 'Dashboard', icon: Grid2x2, href: '/', permission: 'canViewDashboard' },
@@ -44,6 +45,7 @@ export default function Sidebar() {
   
   // Obtener permisos del usuario actual
   const permissions = usePermission();
+  const { isInstallable, install } = usePWAInstall();
   
   // Debug SIEMPRE ejecutar
   if (typeof window !== 'undefined') {
@@ -131,7 +133,10 @@ export default function Sidebar() {
   
   // ID seleccionado (priorizar organizationId)
   const selectedId = selectedOrganizationId || selectedCompanyId;
-  
+  const displayRate =
+    currentOrg && 'exchangeRate' in currentOrg && currentOrg.exchangeRate != null
+      ? Number(currentOrg.exchangeRate)
+      : null;
 
   return (
     <aside
@@ -141,20 +146,59 @@ export default function Sidebar() {
       )}
     >
       {/* Header */}
-      <div className="flex items-center justify-between h-16 px-4 border-b border-sidebar-border">
-        {!isCollapsed && (
-          <h1 className="text-xl font-bold text-sidebar-foreground">Facturación</h1>
-        )}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          className="text-sidebar-foreground hover:bg-sidebar-accent"
-        >
-          <ChevronLeft
-            className={cn('h-5 w-5 transition-transform', isCollapsed && 'rotate-180')}
+      <div className={cn('flex items-center border-b border-sidebar-border gap-2', isCollapsed ? 'justify-center h-16 px-2' : 'justify-between h-16 px-4')}>
+        {!isCollapsed ? (
+          <div className="flex flex-col min-w-0 flex-1 gap-0.5">
+            <div className="flex items-center gap-2">
+              <img
+                src="/logo.png"
+                alt="Logo"
+                className="h-9 w-9 flex-shrink-0 rounded-md object-contain"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = 'none';
+                }}
+              />
+              <h1 className="text-xl font-bold text-sidebar-foreground truncate">Facturación</h1>
+            </div>
+            {displayRate != null && (
+              <span className="text-xs text-muted-foreground font-medium tabular-nums">
+                Tasa: {displayRate.toFixed(2)}
+              </span>
+            )}
+          </div>
+        ) : (
+          <img
+            src="/logo.png"
+            alt="Logo"
+            className="h-9 w-9 flex-shrink-0 rounded-md object-contain"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = 'none';
+            }}
           />
-        </Button>
+        )}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {!isCollapsed && isInstallable && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs h-8 gap-1.5 border-sidebar-border text-sidebar-foreground hover:bg-sidebar-accent"
+              onClick={() => install()}
+            >
+              <Download className="h-3.5 w-3.5" />
+              Instalar App
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className="text-sidebar-foreground hover:bg-sidebar-accent"
+          >
+            <ChevronLeft
+              className={cn('h-5 w-5 transition-transform', isCollapsed && 'rotate-180')}
+            />
+          </Button>
+        </div>
       </div>
 
       {/* Organization Switcher - Solo mostrar si hay múltiples organizaciones */}
