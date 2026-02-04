@@ -68,11 +68,13 @@ export default function TeamPage() {
 
     try {
       setLoading(true);
-      const response = await apiClient.get<Member[]>('/invitations/members');
-      setMembers(response.data);
+      const response = await apiClient.get<Member[]>('/tenants/users');
+      setMembers(Array.isArray(response.data) ? response.data : []);
     } catch (error: any) {
       console.error('Error fetching members:', error);
-      alert('Error al cargar los miembros del equipo');
+      const msg = error?.response?.data?.message || error?.message || 'Error al cargar los miembros del equipo';
+      alert(msg);
+      setMembers([]);
     } finally {
       setLoading(false);
     }
@@ -157,11 +159,23 @@ export default function TeamPage() {
     return labels[role] || role;
   };
 
-  const getRoleBadgeVariant = (role: string) => {
-    if (role === 'SUPER_ADMIN') return 'default';
-    if (role === 'ADMIN') return 'secondary';
-    if (role === 'MANAGER') return 'secondary';
-    return 'outline';
+  /** Badges de rol: Owner=dorado/negro, Admin=azul, Manager=verde, resto=gris */
+  const getRoleBadgeClassName = (role: string) => {
+    const base = 'font-medium';
+    switch (String(role).toUpperCase()) {
+      case 'SUPER_ADMIN':
+        return `${base} bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/40`;
+      case 'ADMIN':
+        return `${base} bg-blue-500/20 text-blue-600 dark:text-blue-400 border-blue-500/40`;
+      case 'MANAGER':
+        return `${base} bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/40`;
+      case 'SELLER':
+        return `${base} bg-slate-500/20 text-slate-600 dark:text-slate-400 border-slate-500/40`;
+      case 'WAREHOUSE':
+        return `${base} bg-slate-400/20 text-slate-500 dark:text-slate-400 border-slate-400/40`;
+      default:
+        return `${base} bg-muted text-muted-foreground border-border`;
+    }
   };
 
   const getUserInitials = (member: Member) => {
@@ -263,7 +277,10 @@ export default function TeamPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant={getRoleBadgeVariant(member.role)}>
+                        <Badge
+                          variant="outline"
+                          className={getRoleBadgeClassName(member.role)}
+                        >
                           <Shield className="h-3 w-3 mr-1" />
                           {getRoleLabel(member.role)}
                         </Badge>

@@ -24,9 +24,19 @@ export class TenantsService {
     return this.getMembers(organizationId);
   }
 
+  /** Peso jerárquico para ordenar roles (mayor = más arriba en la lista) */
+  private static readonly ROLE_ORDER: Record<string, number> = {
+    SUPER_ADMIN: 5,
+    ADMIN: 4,
+    MANAGER: 3,
+    SELLER: 2,
+    WAREHOUSE: 1,
+  };
+
   /**
-   * Obtiene todos los miembros activos de una organización (multi-tenant)
-   * IMPORTANTE: Filtrar estrictamente por organizationId (sin companyId legacy)
+   * Obtiene todos los miembros activos de una organización (multi-tenant).
+   * Consulta explícitamente la tabla Member (OrganizationMember), NO CompanyMember (legacy).
+   * Incluye la relación user (nombre, email, avatar) y ordena por jerarquía de rol.
    */
   async getMembers(organizationId: number) {
     const members = await this.prisma.member.findMany({
@@ -44,12 +54,9 @@ export class TenantsService {
           },
         },
       },
-      orderBy: {
-        joinedAt: 'desc',
-      },
     });
 
-    return members.map((m) => ({
+    const mapped = members.map((m) => ({
       id: m.id,
       userId: m.userId,
       email: m.user.email,
@@ -59,6 +66,18 @@ export class TenantsService {
       status: m.status,
       joinedAt: m.joinedAt,
     }));
+
+    // Ordenamiento jerárquico: SUPER_ADMIN > ADMIN > MANAGER > SELLER > WAREHOUSE
+    const roleWeight = (role: string) =>
+      TenantsService.ROLE_ORDER[String(role).toUpperCase()] ?? 0;
+
+    mapped.sort((a, b) => {
+      const diff = roleWeight(b.role) - roleWeight(a.role);
+      if (diff !== 0) return diff;
+      return new Date(b.joinedAt).getTime() - new Date(a.joinedAt).getTime();
+    });
+
+    return mapped;
   }
 
   /**

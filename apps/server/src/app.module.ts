@@ -17,6 +17,7 @@ import { SuppliersModule } from './modules/suppliers/suppliers.module';
 import { ExpensesModule } from './modules/expenses/expenses.module';
 import { ExpenseCategoriesModule } from './modules/expense-categories/expense-categories.module';
 import { InvitationsModule } from './modules/invitations/invitations.module';
+import { TasksModule } from './modules/tasks/tasks.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { InvitationsModule } from './modules/invitations/invitations.module';
     ExpensesModule,
     ExpenseCategoriesModule,
     InvitationsModule,
+    TasksModule,
   ],
   controllers: [AppController],
   providers: [

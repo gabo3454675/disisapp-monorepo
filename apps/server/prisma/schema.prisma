@@ -27,6 +27,8 @@ model User {
   createdInvoices Invoice[]     // Facturas que vendió
   uploadedDocs    Document[]    // Archivos que subió
   invitations   Invitation[]    // Invitaciones enviadas
+  tasksAssigned  Task[] @relation("TasksAssigned")         // Tareas asignadas al empleado
+  tasksCreated   Task[] @relation("TasksCreated")         // Tareas que creó (admin)
 
   @@index([isSuperAdmin])
   @@map("users")
@@ -112,6 +114,7 @@ model Organization {
   expenseCategories ExpenseCategory[]
   expenses         Expense[]
   invitations      Invitation[] // Invitaciones para unirse a la organización
+  tasks            Task[]       // Tareas de la organización (workflow)
 
   @@index([slug])
   @@map("organizations")
@@ -256,6 +259,7 @@ model Invoice {
   customer      Customer?     @relation(fields: [customerId], references: [id])
   seller        User          @relation(fields: [sellerId], references: [id])
   items         InvoiceItem[]
+  tasks         Task[]        // Tareas asociadas a esta factura (opcional)
 
   @@index([companyId])
   @@index([organizationId])
@@ -384,4 +388,47 @@ model Document {
   @@index([organizationId])
   @@index([entityType, entityId])
   @@map("documents")
+}
+
+// ------------------------------------------
+// 6. GESTIÓN DE TAREAS (WORKFLOW)
+// ------------------------------------------
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+}
+
+enum TaskPriority {
+  LOW
+  HIGH
+}
+
+model Task {
+  id              Int          @id @default(autoincrement())
+  title           String
+  description     String?
+  status          TaskStatus   @default(PENDING)
+  priority        TaskPriority @default(LOW)
+  read            Boolean      @default(false) // Indicador visual: no leída por el asignado
+  organizationId  Int          // Multi-tenant: obligatorio
+  assignedToId   Int          // Empleado que debe hacer la tarea
+  createdById     Int          // Admin que asignó
+  invoiceId       Int?         // Opcional: factura relacionada
+
+  organization  Organization @relation(fields: [organizationId], references: [id])
+  assignedTo    User         @relation("TasksAssigned", fields: [assignedToId], references: [id])
+  createdBy     User         @relation("TasksCreated", fields: [createdById], references: [id])
+  invoice       Invoice?     @relation(fields: [invoiceId], references: [id])
+
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([organizationId])
+  @@index([assignedToId])
+  @@index([createdById])
+  @@index([status])
+  @@index([read])
+  @@map("tasks")
 }

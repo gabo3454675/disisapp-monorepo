@@ -11,6 +11,8 @@ import {
 import { TenantsService } from './tenants.service';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { OrganizationGuard } from '@/common/guards/organization.guard';
+import { RolesGuard } from '@/common/guards/roles.guard';
+import { Roles } from '@/common/decorators/roles.decorator';
 import { TenantId } from '@/common/decorators/tenant.decorator';
 import { ActiveUser } from '@/common/decorators/active-user.decorator';
 import { ActiveOrganization } from '@/common/decorators/active-organization.decorator';
@@ -38,11 +40,12 @@ export class TenantsController {
   }
 
   /**
-   * Lista los miembros activos de la organización (multi-tenant).
-   * Fix producción: filtra estrictamente por organizationId (sin companyId legacy).
+   * Lista los miembros activos de la organización (tabla Member, no legacy).
+   * Requiere rol ADMIN, MANAGER o SUPER_ADMIN para ver la lista.
    */
   @Get('users')
-  @UseGuards(OrganizationGuard)
+  @UseGuards(OrganizationGuard, RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN', 'MANAGER')
   async getMembers(@ActiveOrganization() organizationId: number) {
     return this.tenantsService.getMembers(organizationId);
   }

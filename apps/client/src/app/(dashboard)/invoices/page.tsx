@@ -11,8 +11,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Download, Loader2, Search } from 'lucide-react';
+import { Download, Loader2, Search, FileText } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { InvoiceDetailSheet } from '@/components/invoice-detail-sheet';
 import apiClient from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
 
@@ -48,6 +49,8 @@ export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [detailInvoiceId, setDetailInvoiceId] = useState<number | null>(null);
+  const [detailSheetOpen, setDetailSheetOpen] = useState(false);
 
   const fetchInvoices = useCallback(async () => {
     if (!selectedCompanyId) return;
@@ -189,14 +192,27 @@ export default function InvoicesPage() {
                         </span>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDownloadPDF(invoice.id)}
-                        >
-                          <Download className="mr-2 h-4 w-4" />
-                          PDF
-                        </Button>
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setDetailInvoiceId(invoice.id);
+                              setDetailSheetOpen(true);
+                            }}
+                          >
+                            <FileText className="mr-2 h-4 w-4" />
+                            Ver detalle
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDownloadPDF(invoice.id)}
+                          >
+                            <Download className="mr-2 h-4 w-4" />
+                            PDF
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -206,6 +222,13 @@ export default function InvoicesPage() {
           </CardContent>
         </Card>
       </div>
+
+      <InvoiceDetailSheet
+        invoiceId={detailInvoiceId}
+        open={detailSheetOpen}
+        onOpenChange={setDetailSheetOpen}
+        onRefresh={fetchInvoices}
+      />
     </div>
   );
 }
