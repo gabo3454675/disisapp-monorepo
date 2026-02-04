@@ -14,7 +14,6 @@ import NotificationsSection from '@/components/notifications-section';
 import { RateConfigModal } from '@/components/rate-config-modal';
 import apiClient from '@/lib/api';
 import { usePermission } from '@/hooks/usePermission';
-import { TrendingUp } from 'lucide-react';
 
 interface DashboardSummary {
   totalSalesToday: number;
