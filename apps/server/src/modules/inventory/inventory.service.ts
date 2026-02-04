@@ -93,15 +93,19 @@ export class InventoryService {
       'NO',
     ]);
 
-    // Validación de datos en columna F (EXENTO): lista "SI", "NO" — 1000 filas (F2:F1001)
-    worksheet.dataValidations.add('F2:F1001', {
-      type: 'list',
+    // Validación de datos en columna F (EXENTO): lista "SI", "NO" — por celda (evita worksheet.dataValidations sin tipos)
+    const listValidation = {
+      type: 'list' as const,
       allowBlank: true,
       formulae: ['"SI,NO"'],
       showErrorMessage: true,
       errorTitle: 'Valor no permitido',
       error: 'Seleccione SI o NO.',
-    });
+    };
+    for (let i = 2; i <= 1001; i++) {
+      const cell = worksheet.getCell('F' + i);
+      (cell as { dataValidation?: typeof listValidation }).dataValidation = listValidation;
+    }
 
     // Anchos de columnas para lectura fácil
     worksheet.getColumn(1).width = 16;  // A: SKU
