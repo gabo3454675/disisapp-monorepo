@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import apiClient from '@/lib/api';
-import { Download, MessageCircle, CheckCircle, Loader2 } from 'lucide-react';
+import { Download, MessageCircle, CheckCircle, Loader2, PlayCircle } from 'lucide-react';
+import { toast } from 'sonner';
 
 const WHATSAPP_MSG = 'Hola, adjunto detalle de su factura. Cualquier duda estamos a la orden.';
 
@@ -22,7 +23,7 @@ export function TaskResolutionBar({
   onDownloadPDF,
   onDone,
 }: TaskResolutionBarProps) {
-  const [markingDone, setMarkingDone] = useState(false);
+  const [updating, setUpdating] = useState(false);
 
   const openWhatsApp = () => {
     const text = encodeURIComponent(WHATSAPP_MSG);
@@ -35,15 +36,17 @@ export function TaskResolutionBar({
     }
   };
 
-  const handleMarkDone = async () => {
-    setMarkingDone(true);
+  const handleStatus = async (status: 'IN_PROGRESS' | 'DONE') => {
+    setUpdating(true);
     try {
-      await apiClient.patch(`/tasks/${taskId}/status`, { status: 'DONE' });
+      await apiClient.patch(`/tasks/${taskId}/status`, { status });
       onDone?.();
+      toast.success(status === 'DONE' ? 'Tarea completada' : 'Estado actualizado');
+      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('tasks-updated'));
     } catch {
-      alert('Error al marcar la tarea como lista');
+      toast.error('Error al actualizar el estado');
     } finally {
-      setMarkingDone(false);
+      setUpdating(false);
     }
   };
 
@@ -59,13 +62,13 @@ export function TaskResolutionBar({
           <MessageCircle className="mr-2 h-4 w-4" />
           Enviar WhatsApp
         </Button>
-        <Button variant="default" size="sm" onClick={handleMarkDone} disabled={markingDone}>
-          {markingDone ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <CheckCircle className="mr-2 h-4 w-4" />
-          )}
-          Marcar listo
+        <Button variant="outline" size="sm" onClick={() => handleStatus('IN_PROGRESS')} disabled={updating}>
+          {updating ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4 mr-1" />}
+          En progreso
+        </Button>
+        <Button variant="default" size="sm" onClick={() => handleStatus('DONE')} disabled={updating}>
+          {updating ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4 mr-1" />}
+          Completada
         </Button>
       </div>
     </div>

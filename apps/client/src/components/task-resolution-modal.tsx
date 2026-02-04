@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -11,7 +11,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { TaskResolutionBar } from '@/components/task-resolution-bar';
 import apiClient from '@/lib/api';
-import { FileText, CheckCircle, Loader2 } from 'lucide-react';
+import { FileText, CheckCircle, Loader2, PlayCircle } from 'lucide-react';
+import { toast } from 'sonner';
 
 export interface TaskForResolution {
   id: number;
@@ -45,19 +46,39 @@ export function TaskResolutionModal({
   onDone,
   onVerFactura,
 }: TaskResolutionModalProps) {
-  const [markingDone, setMarkingDone] = useState(false);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [currentStatus, setCurrentStatus] = useState<string>(task?.status ?? 'PENDING');
 
-  const handleMarkDone = async () => {
+  useEffect(() => {
+    if (task) setCurrentStatus(task.status);
+  }, [task?.id, task?.status]);
+
+  // Marcar como leída al abrir el modal
+  useEffect(() => {
+    if (!open || !task?.id || task.read) return;
+    apiClient.patch(`/tasks/${task.id}/read`).catch(() => {}).finally(() => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('tasks-updated'));
+      }
+    });
+  }, [open, task?.id, task?.read]);
+
+  const handleStatusChange = async (newStatus: 'PENDING' | 'IN_PROGRESS' | 'DONE') => {
     if (!task) return;
-    setMarkingDone(true);
+    setUpdatingStatus(true);
     try {
-      await apiClient.patch(`/tasks/${task.id}/status`, { status: 'DONE' });
+      await apiClient.patch(`/tasks/${task.id}/status`, { status: newStatus });
+      setCurrentStatus(newStatus);
       onDone?.();
-      onOpenChange(false);
+      toast.success('Estado actualizado', {
+        description: newStatus === 'DONE' ? 'Tarea completada.' : 'Estado de la tarea actualizado.',
+      });
+      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('tasks-updated'));
+      if (newStatus === 'DONE') onOpenChange(false);
     } catch {
-      alert('Error al marcar la tarea como lista');
+      toast.error('Error', { description: 'No se pudo actualizar el estado.' });
     } finally {
-      setMarkingDone(false);
+      setUpdatingStatus(false);
     }
   };
 
@@ -137,25 +158,42 @@ export function TaskResolutionModal({
               />
             </>
           )}
-          {!hasInvoice && (
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">
-                Esta tarea no está vinculada a una factura.
-              </p>
-              <Button
-                variant="default"
-                size="sm"
-                onClick={handleMarkDone}
-                disabled={markingDone}
-              >
-                {markingDone ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <CheckCircle className="mr-2 h-4 w-4" />
-                )}
-                Marcar listo
-              </Button>
+          {/* Selector de estado: En progreso / Completada (visible para todas las tareas) */}
+          <div className="space-y-2 pt-2 border-t">
+            <p className="text-sm font-medium text-muted-foreground">Cambiar estado</p>
+            <div className="flex flex-wrap gap-2">
+              {currentStatus !== 'IN_PROGRESS' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleStatusChange('IN_PROGRESS')}
+                  disabled={updatingStatus}
+                >
+                  {updatingStatus ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4 mr-1" />}
+                  En progreso
+                </Button>
+              )}
+              {currentStatus !== 'DONE' && (
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => handleStatusChange('DONE')}
+                  disabled={updatingStatus}
+                >
+                  {updatingStatus ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4 mr-1" />}
+                  Completada
+                </Button>
+              )}
+              {currentStatus === 'DONE' && (
+                <span className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">Completada</span>
+              )}
             </div>
+          </div>
+
+          {!hasInvoice && (
+            <p className="text-sm text-muted-foreground">
+              Esta tarea no está vinculada a una factura.
+            </p>
           )}
         </div>
       </DialogContent>

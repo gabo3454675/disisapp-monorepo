@@ -17,6 +17,8 @@ export interface Organization {
   plan: string;
   role: string;
   exchangeRate?: number;
+  /** ISO date string; última actualización de la tasa (para tarea "Actualizar Tasa del Día") */
+  rateUpdatedAt?: string | null;
 }
 
 interface User {
@@ -43,7 +45,7 @@ interface AuthState {
   getCurrentOrganization: () => Organization | Company | null;
   hasOrganizations: () => boolean;
   getOrganizations: () => Organization[];
-  setOrganizationExchangeRate: (organizationId: number, exchangeRate: number) => void;
+  setOrganizationExchangeRate: (organizationId: number, exchangeRate: number, rateUpdatedAt?: string | null) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -226,12 +228,12 @@ export const useAuthStore = create<AuthState>()(
           role: c.role,
         }));
       },
-      setOrganizationExchangeRate: (organizationId: number, exchangeRate: number) => {
+      setOrganizationExchangeRate: (organizationId: number, exchangeRate: number, rateUpdatedAt?: string | null) => {
         const state = get();
         const orgs = state.user?.organizations;
         if (!orgs) return;
         const updated = orgs.map((o) =>
-          o.id === organizationId ? { ...o, exchangeRate } : o
+          o.id === organizationId ? { ...o, exchangeRate, ...(rateUpdatedAt !== undefined && { rateUpdatedAt }) } : o
         );
         set({ user: state.user ? { ...state.user, organizations: updated } : null });
       },

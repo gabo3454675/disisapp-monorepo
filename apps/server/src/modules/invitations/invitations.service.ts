@@ -6,8 +6,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '@/common/prisma/prisma.service';
+import { getPermissions, ROLES } from '@/common/constants/roles.constants';
 import { InviteMemberDto } from './dto/invite-member.dto';
+import { ProvisionMemberDto } from './dto/provision-member.dto';
 import { randomBytes } from 'crypto';
+import * as bcrypt from 'bcryptjs';
 
 @Injectable()
 export class InvitationsService {
@@ -37,22 +40,21 @@ export class InvitationsService {
       );
     }
 
-    // Solo SUPER_ADMIN y ADMIN pueden invitar miembros
-    if (inviterMembership.role !== 'SUPER_ADMIN' && inviterMembership.role !== 'ADMIN') {
+    const inviterRole = String(inviterMembership.role).toUpperCase();
+    const perms = getPermissions(inviterRole);
+    if (!perms.canManageUsers) {
       throw new ForbiddenException(
         'Solo los SUPER_ADMIN y ADMIN pueden invitar miembros',
       );
     }
 
-    // REGLA DE ORO: Los ADMIN no pueden crear otros ADMIN
-    if (inviterMembership.role === 'ADMIN' && inviteDto.role === 'ADMIN') {
+    // REGLA: Los ADMIN no pueden crear otros ADMIN ni SUPER_ADMIN
+    if (inviterRole === ROLES.ADMIN && String(inviteDto.role).toUpperCase() === ROLES.ADMIN) {
       throw new ForbiddenException(
         'Los ADMIN no pueden crear otros ADMIN. Solo el SUPER_ADMIN puede asignar roles ADMIN.',
       );
     }
-
-    // Los ADMIN tampoco pueden crear SUPER_ADMIN
-    if (inviterMembership.role === 'ADMIN' && inviteDto.role === 'SUPER_ADMIN') {
+    if (inviterRole === ROLES.ADMIN && String(inviteDto.role).toUpperCase() === ROLES.SUPER_ADMIN) {
       throw new ForbiddenException(
         'Los ADMIN no pueden crear SUPER_ADMIN. Solo el SUPER_ADMIN del sistema puede asignar este rol.',
       );
@@ -141,6 +143,157 @@ export class InvitationsService {
       invitation,
       token, // En producción, esto se enviaría por email
       invitationUrl: `/accept-invitation?token=${token}`,
+    };
+  }
+
+  /**
+   * Provisionamiento interno: crea usuario y/o lo agrega a la organización sin enviar email.
+   * - Usuario nuevo: crea User con contraseña temporal, crea Member. Retorna { isNewUser: true, tempPassword }.
+   * - Usuario existente: solo crea Member. Retorna { isNewUser: false, message }.
+   * Rollback: si falla la inserción en la organización tras crear el usuario, se revierte la creación del usuario.
+   */
+  async provisionMember(
+    dto: ProvisionMemberDto,
+    organizationId: number,
+    invitedBy: number,
+  ) {
+    const inviterMembership = await this.prisma.member.findFirst({
+      where: {
+        userId: invitedBy,
+        organizationId,
+        status: 'ACTIVE',
+      },
+    });
+
+    if (!inviterMembership) {
+      throw new ForbiddenException('No tienes acceso a esta organización');
+    }
+
+    const inviterRole = String(inviterMembership.role).toUpperCase();
+    const perms = getPermissions(inviterRole);
+    if (!perms.canManageUsers) {
+      throw new ForbiddenException(
+        'Solo SUPER_ADMIN y ADMIN pueden agregar miembros directamente',
+      );
+    }
+
+    const targetRole = String(dto.role).toUpperCase();
+    if (inviterRole === ROLES.ADMIN && targetRole === ROLES.ADMIN) {
+      throw new ForbiddenException(
+        'Los ADMIN no pueden crear otros ADMIN. Solo el SUPER_ADMIN puede asignar roles ADMIN.',
+      );
+    }
+    if (inviterRole === ROLES.ADMIN && targetRole === ROLES.SUPER_ADMIN) {
+      throw new ForbiddenException(
+        'Los ADMIN no pueden crear SUPER_ADMIN. Solo el SUPER_ADMIN puede asignar este rol.',
+      );
+    }
+
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email: dto.email.toLowerCase().trim() },
+    });
+
+    if (existingUser) {
+      const existingMembership = await this.prisma.member.findFirst({
+        where: {
+          userId: existingUser.id,
+          organizationId,
+          status: 'ACTIVE',
+        },
+      });
+      if (existingMembership) {
+        throw new ConflictException(
+          'Este usuario ya es miembro activo de esta organización',
+        );
+      }
+      const member = await this.prisma.member.create({
+        data: {
+          userId: existingUser.id,
+          organizationId,
+          role: dto.role,
+          status: 'ACTIVE',
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              fullName: true,
+              avatarUrl: true,
+            },
+          },
+        },
+      });
+      return {
+        isNewUser: false,
+        message: 'Usuario agregado a la organización',
+        member: this.mapMemberToResponse(member),
+      };
+    }
+
+    const tempPassword = dto.tempPassword ?? this.generateTempPassword();
+    const saltRounds = 10;
+    const passwordHash = await bcrypt.hash(tempPassword, saltRounds);
+    const email = dto.email.toLowerCase().trim();
+    const fullName = dto.fullName?.trim() || null;
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          email,
+          passwordHash,
+          fullName,
+        },
+      });
+      const member = await tx.member.create({
+        data: {
+          userId: user.id,
+          organizationId,
+          role: dto.role,
+          status: 'ACTIVE',
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              fullName: true,
+              avatarUrl: true,
+            },
+          },
+        },
+      });
+      return { user, member };
+    });
+
+    return {
+      isNewUser: true,
+      tempPassword,
+      member: this.mapMemberToResponse(result.member),
+    };
+  }
+
+  private generateTempPassword(): string {
+    return 'Disis2026!';
+  }
+
+  private mapMemberToResponse(member: {
+    id: number;
+    userId: number;
+    role: string;
+    status: string;
+    joinedAt: Date;
+    user: { id: number; email: string; fullName: string | null; avatarUrl: string | null };
+  }) {
+    return {
+      id: member.id,
+      userId: member.userId,
+      email: member.user.email,
+      fullName: member.user.fullName,
+      avatarUrl: member.user.avatarUrl,
+      role: member.role,
+      status: member.status,
+      joinedAt: member.joinedAt,
     };
   }
 
@@ -275,7 +428,7 @@ export class InvitationsService {
       },
     });
 
-    if (!membership || (membership.role !== 'SUPER_ADMIN' && membership.role !== 'ADMIN')) {
+    if (!membership || !getPermissions(membership.role).canManageUsers) {
       throw new ForbiddenException(
         'Solo los SUPER_ADMIN y ADMIN pueden ver las invitaciones',
       );

@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/useAuthStore';
 import Sidebar from '@/components/sidebar';
 import BottomNav from '@/components/bottom-nav';
+import { ExchangeRateIndicator } from '@/components/exchange-rate-indicator';
+import { TasksNotificationBell } from '@/components/tasks-notification-bell';
+import { RateConfigModal } from '@/components/rate-config-modal';
 import { PermissionDebug } from '@/components/permission-debug';
 import { PWAInstallPrompt } from '@/components/pwa-install-prompt';
 import { Loader2 } from 'lucide-react';
@@ -25,6 +28,7 @@ export default function DashboardLayout({
   
   // Usar organizationId o companyId como fallback
   const selectedId = selectedOrganizationId || selectedCompanyId;
+  const [rateConfigModalOpen, setRateConfigModalOpen] = useState(false);
 
   // Asegurar que solo renderizamos en el cliente
   useEffect(() => {
@@ -101,9 +105,17 @@ export default function DashboardLayout({
       <Sidebar />
 
       {/* Main Content */}
-      <main className="flex-1 pb-24 lg:pb-0">
-        {children}
+      <main className="flex-1 flex flex-col pb-24 lg:pb-0 min-w-0">
+        {/* Header: indicador de tasa + campanita de tareas */}
+        <header className="sticky top-0 z-10 flex shrink-0 items-center justify-end gap-2 border-b border-border bg-background/95 px-4 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+          <TasksNotificationBell />
+          <ExchangeRateIndicator onOpenConfig={() => setRateConfigModalOpen(true)} />
+        </header>
+        <div className="flex-1">{children}</div>
       </main>
+
+      {/* Modal de configuración de tasa (abierto desde el indicador) */}
+      <RateConfigModal open={rateConfigModalOpen} onOpenChange={setRateConfigModalOpen} />
 
       {/* Mobile Bottom Navigation */}
       <BottomNav />

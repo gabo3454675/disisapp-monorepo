@@ -139,4 +139,8 @@ async findAll(@ActiveOrganization() organizationId: number) {
 - El guard valida que el `status` de la membresía sea `'ACTIVE'`
 - Si el usuario no es miembro o está suspendido, se lanza un 403
 - La validación se hace en cada petición (no hay caché)
-- El guard no modifica los controladores existentes, solo añade validación
+- El guard no filtra por rol: **cualquier miembro activo** (ADMIN, MANAGER, SELLER, WAREHOUSE, SUPER_ADMIN) puede acceder a los recursos de esa organización. Los permisos por endpoint se controlan con `RolesGuard` y `@Roles()` según `@/common/constants/roles.constants.ts`.
+
+## Selector de Empresas (Frontend)
+
+El backend devuelve en login todas las organizaciones donde el usuario es **Member** con `status: ACTIVE`, sin filtrar por rol. Por tanto, un usuario con rol **ADMIN** que pertenezca a una o más organizaciones puede ver el selector de empresas y cambiar entre ellas; no está restringido solo al "creador" ni al SUPER_ADMIN. La lista de organizaciones la construye `AuthService.validateUser()` desde la tabla `Member`.

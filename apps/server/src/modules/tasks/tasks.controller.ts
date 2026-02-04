@@ -41,11 +41,37 @@ export class TasksController {
 
   /**
    * Obtener tareas pendientes (PENDING / IN_PROGRESS) del usuario logueado.
-   * No requiere organización: devuelve tareas de todas sus organizaciones.
    */
   @Get('my-pending')
   getMyPending(@ActiveUser() user: { id: number }) {
     return this.tasksService.getMyPending(user.id);
+  }
+
+  /**
+   * Contar tareas no leídas asignadas al usuario (para badge de notificaciones).
+   */
+  @Get('my-unread-count')
+  getMyUnreadCount(@ActiveUser() user: { id: number }) {
+    return this.tasksService.getMyUnreadCount(user.id);
+  }
+
+  /**
+   * Tareas creadas por el usuario (para que el gerente vea el estado actualizado por el asignado).
+   */
+  @Get('created-by-me')
+  getCreatedByMe(@ActiveUser() user: { id: number }) {
+    return this.tasksService.getCreatedByMe(user.id);
+  }
+
+  /**
+   * Marcar tarea como leída (solo asignado o admin). No requiere x-tenant-id.
+   */
+  @Patch(':id/read')
+  markAsRead(
+    @Param('id', ParseIntPipe) id: number,
+    @ActiveUser() user: { id: number },
+  ) {
+    return this.tasksService.markAsRead(id, user.id);
   }
 
   /**

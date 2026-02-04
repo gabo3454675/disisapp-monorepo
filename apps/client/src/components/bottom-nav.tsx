@@ -81,11 +81,16 @@ export default function BottomNav() {
 
   const activeItem = getActiveItem();
 
-  // Filtrar items adicionales basados en permisos
+  // Filtrar items adicionales basados en permisos (ADMIN y SUPER_ADMIN ven Configuración)
+  const role = String(permissions.role || '').toUpperCase();
   const filteredAdditionalItems = additionalMenuItems.filter((item) => {
     if (item.permission) {
       const permissionKey = item.permission as keyof typeof permissions;
-      return permissions[permissionKey] === true;
+      const hasPermission = permissions[permissionKey] === true;
+      if (item.id === 'settings') {
+        return hasPermission || role === 'ADMIN' || role === 'SUPER_ADMIN';
+      }
+      return hasPermission;
     }
     return true;
   });
@@ -135,7 +140,7 @@ export default function BottomNav() {
               <SheetTitle>Menú</SheetTitle>
             </SheetHeader>
 
-            {/* Selector de Organización (Mobile) */}
+            {/* Selector de Organización (Mobile) - Touch-friendly min 44px */}
             <div className="mt-4">
               <p className="text-xs font-medium text-muted-foreground mb-2">
                 Organización activa
@@ -151,7 +156,7 @@ export default function BottomNav() {
                     }
                   }}
                 >
-                  <SelectTrigger className="w-full md:w-auto">
+                  <SelectTrigger className="w-full md:w-auto min-h-[44px] py-3 text-base touch-manipulation">
                     <SelectValue
                       placeholder={currentOrg?.name || 'Seleccionar organización'}
                     />
@@ -162,14 +167,18 @@ export default function BottomNav() {
                     className="max-w-[calc(100vw-20px)]"
                   >
                     {organizations.map((org) => (
-                      <SelectItem key={org.id} value={org.id.toString()}>
+                      <SelectItem
+                        key={org.id}
+                        value={org.id.toString()}
+                        className="min-h-[44px] py-3 text-base touch-manipulation"
+                      >
                         {org.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               ) : (
-                <div className="w-full rounded-md border border-border bg-secondary/30 px-3 py-2 text-sm">
+                <div className="w-full rounded-md border border-border bg-secondary/30 px-3 py-3 text-sm min-h-[44px] flex items-center">
                   {currentOrg?.name || 'Mi Organización'}
                 </div>
               )}

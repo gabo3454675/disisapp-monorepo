@@ -6,6 +6,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   ParseIntPipe,
   UseGuards,
 } from '@nestjs/common';
@@ -51,8 +52,23 @@ export class TenantsController {
   async updateOrganization(
     @ActiveOrganization() organizationId: number,
     @Body() dto: UpdateOrganizationDto,
+    @ActiveUser() user: { id: number },
   ) {
-    return this.tenantsService.updateOrganization(organizationId, dto);
+    return this.tenantsService.updateOrganization(organizationId, dto, user.id);
+  }
+
+  /**
+   * Historial de cambios (audit log). Solo SUPER_ADMIN y ADMIN.
+   */
+  @Get('organization/audit-log')
+  @UseGuards(OrganizationGuard, RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  async getAuditLog(
+    @ActiveOrganization() organizationId: number,
+    @Query('limit') limit?: string,
+  ) {
+    const limitNum = limit ? parseInt(limit, 10) : 100;
+    return this.tenantsService.getAuditLog(organizationId, limitNum);
   }
 
   @Post()

@@ -28,7 +28,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Plus, Loader2, UserPlus, Mail, Shield, User, Copy, Check, Link2, TrendingUp, Trash2 } from 'lucide-react';
+import { Plus, Loader2, UserPlus, Mail, Shield, User, Copy, Check, Link2, TrendingUp, Trash2, History } from 'lucide-react';
 import apiClient from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePermission } from '@/hooks/usePermission';
@@ -47,6 +47,19 @@ interface Member {
   joinedAt: string;
 }
 
+/** Entrada del historial de auditoría (solo campos expuestos por el API). */
+interface AuditLogEntry {
+  id: number;
+  action: string;
+  entityType: string | null;
+  entityId: string | null;
+  oldValue: Record<string, unknown> | null;
+  newValue: Record<string, unknown> | null;
+  actorEmail: string | null;
+  targetSummary: string | null;
+  createdAt: string;
+}
+
 const ROLES_FOR_SELECT: { value: 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'SELLER' | 'WAREHOUSE'; label: string }[] = [
   { value: 'SUPER_ADMIN', label: 'Super Administrador' },
   { value: 'ADMIN', label: 'Administrador' },
@@ -54,6 +67,15 @@ const ROLES_FOR_SELECT: { value: 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'SELLER' 
   { value: 'SELLER', label: 'Cajero/Vendedor' },
   { value: 'WAREHOUSE', label: 'Almacén' },
 ];
+
+function getAuditActionLabel(action: string): string {
+  const labels: Record<string, string> = {
+    EXCHANGE_RATE_UPDATE: 'Cambio de tasa',
+    MEMBER_DEACTIVATED: 'Usuario desactivado',
+    MEMBER_ROLE_CHANGE: 'Cambio de rol',
+  };
+  return labels[action] || action;
+}
 
 export default function TeamPage() {
   const { user, selectedOrganizationId, selectedCompanyId, getCurrentOrganization, setOrganizationExchangeRate } = useAuthStore();
@@ -68,8 +90,11 @@ export default function TeamPage() {
   const [invitationLink, setInvitationLink] = useState<string>('');
   const [inviteFormData, setInviteFormData] = useState({
     email: '',
+    fullName: '',
     role: 'SELLER' as 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'SELLER' | 'WAREHOUSE',
   });
+  const [tempPasswordModal, setTempPasswordModal] = useState<{ tempPassword: string; email: string } | null>(null);
+  const [copiedPassword, setCopiedPassword] = useState(false);
   const currentOrg = getCurrentOrganization();
   const orgWithRate = currentOrg && 'exchangeRate' in currentOrg ? currentOrg : null;
   const [exchangeRate, setExchangeRate] = useState<string>(
@@ -79,8 +104,11 @@ export default function TeamPage() {
   const [updatingRoleMemberId, setUpdatingRoleMemberId] = useState<number | null>(null);
   const [deactivatingMemberId, setDeactivatingMemberId] = useState<number | null>(null);
   const [confirmDeactivate, setConfirmDeactivate] = useState<Member | null>(null);
+  const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
+  const [loadingAuditLog, setLoadingAuditLog] = useState(false);
 
   const organizationId = selectedOrganizationId || selectedCompanyId;
+  const canViewAuditLog = isSuperAdmin || isAdmin;
 
   const fetchMembers = useCallback(async () => {
     if (!organizationId) return;
@@ -92,7 +120,7 @@ export default function TeamPage() {
     } catch (error: any) {
       console.error('Error fetching members:', error);
       const msg = error?.response?.data?.message || error?.message || 'Error al cargar los miembros del equipo';
-      alert(msg);
+      toast.error('Error al cargar miembros', { description: msg });
       setMembers([]);
     } finally {
       setLoading(false);
@@ -102,6 +130,29 @@ export default function TeamPage() {
   useEffect(() => {
     fetchMembers();
   }, [fetchMembers]);
+
+  const fetchAuditLog = useCallback(async () => {
+    if (!organizationId || !canViewAuditLog) return;
+    try {
+      setLoadingAuditLog(true);
+      const { data } = await apiClient.get<AuditLogEntry[]>('/tenants/organization/audit-log', {
+        params: { limit: 100 },
+      });
+      setAuditLog(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      console.error('Error fetching audit log:', err);
+      toast.error('Error al cargar historial', {
+        description: err?.response?.data?.message || 'No se pudo cargar el historial de cambios.',
+      });
+      setAuditLog([]);
+    } finally {
+      setLoadingAuditLog(false);
+    }
+  }, [organizationId, canViewAuditLog]);
+
+  useEffect(() => {
+    if (canViewAuditLog) fetchAuditLog();
+  }, [canViewAuditLog, fetchAuditLog]);
 
   useEffect(() => {
     if (orgWithRate?.exchangeRate != null) {
@@ -113,30 +164,33 @@ export default function TeamPage() {
     if (!organizationId) return;
     const num = parseFloat(exchangeRate.replace(',', '.'));
     if (Number.isNaN(num) || num <= 0) {
-      alert('Ingresa una tasa válida mayor a 0');
+      toast.error('Tasa inválida', { description: 'Ingresa una tasa válida mayor a 0.' });
       return;
     }
     setSavingRate(true);
     try {
-      const { data } = await apiClient.patch<{ exchangeRate: number }>('/tenants/organization', { exchangeRate: num });
-      setOrganizationExchangeRate(organizationId, data.exchangeRate);
+      const { data } = await apiClient.patch<{ exchangeRate: number; rateUpdatedAt?: string | null }>('/tenants/organization', { exchangeRate: num });
+      setOrganizationExchangeRate(organizationId, data.exchangeRate, data.rateUpdatedAt ?? undefined);
       setExchangeRate(String(data.exchangeRate));
+      toast.success('Tasa actualizada', {
+        description: 'Tasa actualizada para toda la organización. Se reflejará en Facturación, Dashboard y Gastos.',
+      });
     } catch (err: any) {
       const msg = err?.response?.data?.message || err?.message || 'Error al guardar la tasa';
-      alert(msg);
+      toast.error('Error al guardar la tasa', { description: msg });
     } finally {
       setSavingRate(false);
     }
   };
 
   const handleOpenInviteDialog = () => {
-    setInviteFormData({ email: '', role: 'SELLER' });
+    setInviteFormData({ email: '', fullName: '', role: 'SELLER' });
     setIsInviteDialogOpen(true);
   };
 
   const handleCloseInviteDialog = () => {
     setIsInviteDialogOpen(false);
-    setInviteFormData({ email: '', role: 'SELLER' });
+    setInviteFormData({ email: '', fullName: '', role: 'SELLER' });
   };
 
   const handleCloseLinkDialog = () => {
@@ -145,9 +199,65 @@ export default function TeamPage() {
     setCopied(false);
   };
 
+  /** Provisionamiento interno: crea usuario y/o lo agrega a la organización (sin email). */
+  const handleAddMember = async () => {
+    if (!inviteFormData.email || !inviteFormData.email.includes('@')) {
+      toast.error('Email inválido', { description: 'Por favor ingresa un email válido.' });
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const { data } = await apiClient.post<{
+        isNewUser: boolean;
+        tempPassword?: string;
+        message?: string;
+        member: Member;
+      }>('/invitations/provision', {
+        email: inviteFormData.email.trim(),
+        fullName: inviteFormData.fullName?.trim() || undefined,
+        role: inviteFormData.role,
+      });
+
+      handleCloseInviteDialog();
+      await fetchMembers();
+
+      if (data.isNewUser && data.tempPassword) {
+        setTempPasswordModal({
+          tempPassword: data.tempPassword,
+          email: data.member.email,
+        });
+      } else {
+        const name = data.member?.fullName || data.member?.email || 'Usuario';
+        toast.success('Usuario agregado al equipo', {
+          description: `${name} agregado a la organización correctamente.`,
+        });
+      }
+    } catch (error: any) {
+      console.error('Error adding member:', error);
+      const errorMessage = error.response?.data?.message || 'Error al agregar el miembro';
+      toast.error('Error al agregar miembro', { description: errorMessage });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleCopyTempPassword = async () => {
+    if (!tempPasswordModal) return;
+    try {
+      await navigator.clipboard.writeText(tempPasswordModal.tempPassword);
+      setCopiedPassword(true);
+      setTimeout(() => setCopiedPassword(false), 2000);
+      toast.success('Contraseña copiada', { description: 'Cópiala y compártela con el usuario de forma segura.' });
+    } catch {
+      toast.error('Error al copiar');
+    }
+  };
+
+  /** Invitación por link (legacy): genera URL para que el usuario acepte después. */
   const handleInviteMember = async () => {
     if (!inviteFormData.email || !inviteFormData.email.includes('@')) {
-      alert('Por favor ingresa un email válido');
+      toast.error('Email inválido', { description: 'Por favor ingresa un email válido.' });
       return;
     }
 
@@ -162,21 +272,21 @@ export default function TeamPage() {
         role: inviteFormData.role,
       });
 
-      // Construir la URL completa de invitación
-      // El backend retorna: /accept-invitation?token=xxx
-      // Necesitamos convertirla a: /invite/xxx (formato de Next.js)
       const baseUrl = window.location.origin;
       const token = response.data.token;
       const fullInvitationUrl = `${baseUrl}/invite/${token}`;
-      
+
       setInvitationLink(fullInvitationUrl);
       handleCloseInviteDialog();
       setIsLinkDialogOpen(true);
-      fetchMembers();
+      await fetchMembers();
+      toast.success('Invitación enviada', {
+        description: 'Cuando el usuario acepte el enlace, aparecerá en la lista de miembros.',
+      });
     } catch (error: any) {
       console.error('Error inviting member:', error);
       const errorMessage = error.response?.data?.message || 'Error al enviar la invitación';
-      alert(errorMessage);
+      toast.error('Error al enviar invitación', { description: errorMessage });
     } finally {
       setSubmitting(false);
     }
@@ -187,9 +297,10 @@ export default function TeamPage() {
       await navigator.clipboard.writeText(invitationLink);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+      toast.success('Link copiado', { description: 'Listo para compartir.' });
     } catch (error) {
       console.error('Error copying to clipboard:', error);
-      alert('Error al copiar el link');
+      toast.error('Error al copiar', { description: 'No se pudo copiar el link al portapapeles.' });
     }
   };
 
@@ -240,6 +351,15 @@ export default function TeamPage() {
     return isSuperAdmin || isAdmin;
   };
 
+  /** Reglas de eliminación: no eliminarse a sí mismo; no eliminar SUPER_ADMIN salvo que seas SUPER_ADMIN; ADMIN no puede eliminar a otro ADMIN. */
+  const canDeleteMember = (member: Member) => {
+    if (member.userId === currentUserId) return false;
+    if (member.role === 'SUPER_ADMIN' && !isSuperAdmin) return false;
+    if (isAdmin && !isSuperAdmin && member.role === 'SUPER_ADMIN') return false;
+    if (isAdmin && !isSuperAdmin && member.role === 'ADMIN') return false;
+    return canManageTeam;
+  };
+
   const handleRoleChange = async (member: Member, newRole: 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'SELLER' | 'WAREHOUSE') => {
     if (newRole === member.role) return;
     setUpdatingRoleMemberId(member.id);
@@ -266,18 +386,26 @@ export default function TeamPage() {
 
   const handleConfirmDeactivate = async () => {
     if (!confirmDeactivate) return;
+    // Validación frontend: ADMIN no puede eliminar SUPER_ADMIN
+    if (isAdmin && !isSuperAdmin && confirmDeactivate.role === 'SUPER_ADMIN') {
+      toast.error('No permitido', {
+        description: 'Un Administrador no puede eliminar al propietario (Super Admin) de la organización.',
+      });
+      setConfirmDeactivate(null);
+      return;
+    }
     const name = confirmDeactivate.fullName || confirmDeactivate.email;
     setDeactivatingMemberId(confirmDeactivate.id);
     try {
       await apiClient.delete(`/tenants/organization/members/${confirmDeactivate.id}`);
       setMembers((prev) => prev.filter((m) => m.id !== confirmDeactivate.id));
       setConfirmDeactivate(null);
-      toast.success('Usuario desactivado', {
+      toast.success('Usuario eliminado', {
         description: `${name} ya no tiene acceso a la organización. Sus facturas se mantienen.`,
       });
     } catch (err: any) {
-      toast.error('Error al desactivar', {
-        description: err?.response?.data?.message || 'No se pudo desactivar al usuario.',
+      toast.error('Error al eliminar', {
+        description: err?.response?.data?.message || 'No se pudo eliminar al usuario de la organización.',
       });
     } finally {
       setDeactivatingMemberId(null);
@@ -311,7 +439,7 @@ export default function TeamPage() {
           </div>
           <Button onClick={handleOpenInviteDialog}>
             <UserPlus className="mr-2 h-4 w-4" />
-            Invitar Miembro
+            Agregar Miembro
           </Button>
         </div>
 
@@ -366,22 +494,14 @@ export default function TeamPage() {
                 <p className="text-muted-foreground">No hay miembros en esta organización</p>
               </div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Miembro</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Rol</TableHead>
-                    <TableHead>Fecha de Ingreso</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+              <>
+                {/* Vista móvil: tarjetas (Mobile First) */}
+                <div className="flex flex-col gap-3 md:hidden">
                   {members.map((member) => (
-                    <TableRow key={member.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-10 w-10">
+                    <Card key={member.id} className="relative overflow-hidden">
+                      <CardContent className="p-4 pt-4">
+                        <div className="flex items-start gap-3">
+                          <Avatar className="h-12 w-12 flex-shrink-0">
                             {member.avatarUrl ? (
                               <img src={member.avatarUrl} alt={member.fullName || member.email} />
                             ) : (
@@ -390,97 +510,295 @@ export default function TeamPage() {
                               </AvatarFallback>
                             )}
                           </Avatar>
-                          <div>
-                            <p className="font-medium">
+                          <div className="min-w-0 flex-1 pr-10">
+                            <p className="font-semibold text-foreground truncate">
                               {member.fullName || 'Sin nombre'}
                             </p>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Mail className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm">{member.email}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {canChangeRole(member) ? (
-                          <Select
-                            value={member.role}
-                            onValueChange={(value: 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'SELLER' | 'WAREHOUSE') =>
-                              handleRoleChange(member, value)
-                            }
-                            disabled={updatingRoleMemberId === member.id}
-                          >
-                            <SelectTrigger className={getRoleBadgeClassName(member.role) + ' w-[180px]'}>
-                              {updatingRoleMemberId === member.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
+                            <div className="flex flex-wrap items-center gap-2 mt-1">
+                              {canChangeRole(member) ? (
+                                <Select
+                                  value={member.role}
+                                  onValueChange={(value: 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'SELLER' | 'WAREHOUSE') =>
+                                    handleRoleChange(member, value)
+                                  }
+                                  disabled={updatingRoleMemberId === member.id}
+                                >
+                                  <SelectTrigger className={getRoleBadgeClassName(member.role) + ' w-full min-h-[44px] border'}>
+                                    {updatingRoleMemberId === member.id ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <SelectValue placeholder="Cambiar rol" />
+                                    )}
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {ROLES_FOR_SELECT.filter(
+                                      (r) => isSuperAdmin || r.value !== 'SUPER_ADMIN'
+                                    ).map((r) => (
+                                      <SelectItem key={r.value} value={r.value} className="min-h-[44px]">
+                                        {r.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
                               ) : (
-                                <SelectValue />
+                                <Badge
+                                  variant="outline"
+                                  className={getRoleBadgeClassName(member.role) + ' text-xs'}
+                                >
+                                  <Shield className="h-3 w-3 mr-1" />
+                                  {getRoleLabel(member.role)}
+                                </Badge>
                               )}
-                            </SelectTrigger>
-                            <SelectContent>
-                              {ROLES_FOR_SELECT.filter(
-                                (r) => isSuperAdmin || r.value !== 'SUPER_ADMIN'
-                              ).map((r) => (
-                                <SelectItem key={r.value} value={r.value}>
-                                  {r.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        ) : (
-                          <Badge
-                            variant="outline"
-                            className={getRoleBadgeClassName(member.role)}
-                          >
-                            <Shield className="h-3 w-3 mr-1" />
-                            {getRoleLabel(member.role)}
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {new Date(member.joinedAt).toLocaleDateString('es-VE', {
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric',
-                        })}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {member.userId !== currentUserId &&
-                          (member.role !== 'SUPER_ADMIN' || isSuperAdmin) && (
+                            </div>
+                            <div className="flex items-center gap-1.5 mt-1.5 text-sm text-muted-foreground">
+                              <Mail className="h-3.5 w-3.5 flex-shrink-0" />
+                              <span className="truncate">{member.email}</span>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {new Date(member.joinedAt).toLocaleDateString('es-VE', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                              })}
+                            </p>
+                          </div>
+                          {canDeleteMember(member) && (
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                              className="absolute top-3 right-3 h-10 w-10 touch-manipulation text-destructive hover:text-destructive hover:bg-destructive/10"
                               onClick={() => handleDesactivarClick(member)}
                               disabled={deactivatingMemberId === member.id}
-                              title="Desactivar usuario"
+                              title="Eliminar de la organización"
                             >
                               {deactivatingMemberId === member.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
+                                <Loader2 className="h-5 w-5 animate-spin" />
                               ) : (
-                                <Trash2 className="h-4 w-4" />
+                                <Trash2 className="h-5 w-5" />
                               )}
                             </Button>
                           )}
-                      </TableCell>
-                    </TableRow>
+                        </div>
+                      </CardContent>
+                    </Card>
                   ))}
-                </TableBody>
-              </Table>
+                </div>
+
+                {/* Vista desktop: tabla */}
+                <div className="hidden md:block overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Miembro</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Rol</TableHead>
+                        <TableHead>Fecha de Ingreso</TableHead>
+                        <TableHead className="text-right">Acciones</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {members.map((member) => (
+                        <TableRow key={member.id}>
+                          <TableCell>
+                            <div className="flex items-center gap-3">
+                              <Avatar className="h-10 w-10">
+                                {member.avatarUrl ? (
+                                  <img src={member.avatarUrl} alt={member.fullName || member.email} />
+                                ) : (
+                                  <AvatarFallback className="bg-gradient-to-br from-blue-500 to-emerald-500 text-white font-semibold">
+                                    {getUserInitials(member)}
+                                  </AvatarFallback>
+                                )}
+                              </Avatar>
+                              <div>
+                                <p className="font-medium">
+                                  {member.fullName || 'Sin nombre'}
+                                </p>
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Mail className="h-4 w-4 text-muted-foreground" />
+                              <span className="text-sm">{member.email}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {canChangeRole(member) ? (
+                              <Select
+                                value={member.role}
+                                onValueChange={(value: 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'SELLER' | 'WAREHOUSE') =>
+                                  handleRoleChange(member, value)
+                                }
+                                disabled={updatingRoleMemberId === member.id}
+                              >
+                                <SelectTrigger className={getRoleBadgeClassName(member.role) + ' w-[180px]'}>
+                                  {updatingRoleMemberId === member.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <SelectValue />
+                                  )}
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {ROLES_FOR_SELECT.filter(
+                                    (r) => isSuperAdmin || r.value !== 'SUPER_ADMIN'
+                                  ).map((r) => (
+                                    <SelectItem key={r.value} value={r.value}>
+                                      {r.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className={getRoleBadgeClassName(member.role)}
+                              >
+                                <Shield className="h-3 w-3 mr-1" />
+                                {getRoleLabel(member.role)}
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {new Date(member.joinedAt).toLocaleDateString('es-VE', {
+                              year: 'numeric',
+                              month: 'long',
+                              day: 'numeric',
+                            })}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {canDeleteMember(member) && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                onClick={() => handleDesactivarClick(member)}
+                                disabled={deactivatingMemberId === member.id}
+                                title="Eliminar de la organización"
+                              >
+                                {deactivatingMemberId === member.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
             )}
           </CardContent>
         </Card>
+
+        {/* Historial de Cambios (Audit Log) - Solo ADMIN / SUPER_ADMIN */}
+        {canViewAuditLog && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <History className="h-5 w-5" />
+                Historial de Cambios
+              </CardTitle>
+              <CardDescription>
+                Registro de acciones sensibles: cambios de tasa, desactivación de usuarios y cambios de rol. Útil para auditoría y trazabilidad.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {loadingAuditLog ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              ) : auditLog.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <History className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No hay registros en el historial aún.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="flex flex-col gap-3 md:hidden">
+                    {auditLog.map((entry) => (
+                      <div
+                        key={entry.id}
+                        className="rounded-lg border bg-card p-4 text-card-foreground shadow-sm"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="font-medium text-sm">
+                            {getAuditActionLabel(entry.action)}
+                          </span>
+                          <span className="text-xs text-muted-foreground whitespace-nowrap">
+                            {new Date(entry.createdAt).toLocaleString('es-VE', {
+                              day: '2-digit',
+                              month: 'short',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </span>
+                        </div>
+                        {entry.actorEmail && (
+                          <p className="text-sm text-muted-foreground mt-1">
+                            Por: {entry.actorEmail}
+                          </p>
+                        )}
+                        {entry.targetSummary && (
+                          <p className="text-sm mt-1 break-words">{entry.targetSummary}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="hidden md:block overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Fecha</TableHead>
+                          <TableHead>Quién</TableHead>
+                          <TableHead>Acción</TableHead>
+                          <TableHead>Detalle</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {auditLog.map((entry) => (
+                          <TableRow key={entry.id}>
+                            <TableCell className="text-muted-foreground whitespace-nowrap text-sm">
+                              {new Date(entry.createdAt).toLocaleString('es-VE', {
+                                day: '2-digit',
+                                month: 'short',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {entry.actorEmail ?? '—'}
+                            </TableCell>
+                            <TableCell className="font-medium">
+                              {getAuditActionLabel(entry.action)}
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground max-w-xs truncate">
+                              {entry.targetSummary ?? '—'}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
 
-      {/* Invite Member Dialog */}
+      {/* Agregar Miembro (provisionamiento interno) */}
       <Dialog open={isInviteDialogOpen} onOpenChange={setIsInviteDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>Invitar Miembro</DialogTitle>
+            <DialogTitle>Agregar Miembro</DialogTitle>
             <DialogDescription>
-              Envía una invitación por email para que se una a tu organización
+              Crea el usuario y agrégalo a la organización de inmediato. Si ya existe, solo se vincula al equipo.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -497,6 +815,18 @@ export default function TeamPage() {
               />
             </div>
             <div className="space-y-2">
+              <Label htmlFor="fullName">Nombre (opcional)</Label>
+              <Input
+                id="fullName"
+                type="text"
+                placeholder="Juan Pérez"
+                value={inviteFormData.fullName}
+                onChange={(e) =>
+                  setInviteFormData({ ...inviteFormData, fullName: e.target.value })
+                }
+              />
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="role">Rol</Label>
               <Select
                 value={inviteFormData.role}
@@ -509,6 +839,9 @@ export default function TeamPage() {
                 </SelectTrigger>
                 <SelectContent>
                   {isSuperAdmin && (
+                    <SelectItem value="SUPER_ADMIN">Super Administrador</SelectItem>
+                  )}
+                  {isSuperAdmin && (
                     <SelectItem value="ADMIN">Administrador (ADMIN)</SelectItem>
                   )}
                   <SelectItem value="MANAGER">Gerente (MANAGER)</SelectItem>
@@ -517,7 +850,7 @@ export default function TeamPage() {
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                El Gerente puede gestionar el equipo y configuraciones. El Cajero/Vendedor solo puede realizar ventas. Almacén gestiona inventario.
+                El Gerente puede gestionar el equipo. El Cajero/Vendedor solo puede realizar ventas. Almacén gestiona inventario.
               </p>
             </div>
           </div>
@@ -529,16 +862,16 @@ export default function TeamPage() {
             >
               Cancelar
             </Button>
-            <Button onClick={handleInviteMember} disabled={submitting}>
+            <Button onClick={handleAddMember} disabled={submitting}>
               {submitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Enviando...
+                  Agregando...
                 </>
               ) : (
                 <>
                   <UserPlus className="mr-2 h-4 w-4" />
-                  Enviar Invitación
+                  Agregar
                 </>
               )}
             </Button>
@@ -546,16 +879,66 @@ export default function TeamPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Confirmación Desactivar miembro */}
+      {/* Modal contraseña temporal (solo usuario nuevo) */}
+      <Dialog
+        open={!!tempPasswordModal}
+        onOpenChange={(open) => !open && setTempPasswordModal(null)}
+      >
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Usuario creado correctamente</DialogTitle>
+            <DialogDescription>
+              Este usuario es nuevo. Comparte la contraseña temporal de forma segura; podrá cambiarla al iniciar sesión.
+            </DialogDescription>
+          </DialogHeader>
+          {tempPasswordModal && (
+            <div className="space-y-4 py-2">
+              <p className="text-sm text-muted-foreground">
+                Email: <strong>{tempPasswordModal.email}</strong>
+              </p>
+              <div className="space-y-2">
+                <Label className="text-sm">Contraseña temporal</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    readOnly
+                    value={tempPasswordModal.tempPassword}
+                    className="font-mono bg-muted"
+                  />
+                  <Button
+                    type="button"
+                    variant={copiedPassword ? 'default' : 'outline'}
+                    size="icon"
+                    onClick={handleCopyTempPassword}
+                    title="Copiar contraseña"
+                  >
+                    {copiedPassword ? (
+                      <Check className="h-4 w-4 text-green-500" />
+                    ) : (
+                      <Copy className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setTempPasswordModal(null)}>
+              Entendido
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmación Eliminar miembro */}
       <Dialog
         open={!!confirmDeactivate}
         onOpenChange={(open) => !open && setConfirmDeactivate(null)}
       >
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>Desactivar usuario</DialogTitle>
+            <DialogTitle>Eliminar de la organización</DialogTitle>
             <DialogDescription>
-              ¿Seguro? El usuario perderá acceso a la organización, pero sus facturas y actividad se mantendrán.
+              ¿Seguro que deseas eliminar a este usuario de la organización? Perderá acceso, pero sus facturas y actividad se mantendrán.
             </DialogDescription>
           </DialogHeader>
           {confirmDeactivate && (
@@ -568,7 +951,14 @@ export default function TeamPage() {
               Cancelar
             </Button>
             <Button variant="destructive" onClick={handleConfirmDeactivate} disabled={!!deactivatingMemberId}>
-              {deactivatingMemberId ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Desactivar'}
+              {deactivatingMemberId ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Eliminando...
+                </>
+              ) : (
+                'Eliminar'
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

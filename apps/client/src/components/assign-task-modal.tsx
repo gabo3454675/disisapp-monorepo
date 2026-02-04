@@ -81,7 +81,7 @@ export function AssignTaskModal({
     async function load() {
       setLoadingMembers(true);
       try {
-        const res = await apiClient.get<OrgMember[]>('/tenants/users');
+        const res = await apiClient.get<OrgMember[]>('/tenants/organization/members');
         setMembers(Array.isArray(res.data) ? res.data : []);
       } catch (e: any) {
         setError(e?.response?.data?.message || e?.message || 'Error al cargar usuarios');

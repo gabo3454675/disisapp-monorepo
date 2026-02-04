@@ -6,6 +6,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '@/common/prisma/prisma.service';
+import {
+  ROLE_ORDER,
+  getPermissions,
+  canDeleteSuperAdmin,
+  ROLES,
+} from '@/common/constants/roles.constants';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
 import { UpdateMemberRoleDto } from './dto/update-member-role.dto';
@@ -27,6 +33,7 @@ export class TenantsService {
         slug: true,
         plan: true,
         exchangeRate: true,
+        rateUpdatedAt: true,
       },
     });
     if (!org) {
@@ -38,27 +45,57 @@ export class TenantsService {
       slug: org.slug,
       plan: org.plan,
       exchangeRate: org.exchangeRate ?? 1,
+      rateUpdatedAt: org.rateUpdatedAt ?? null,
     };
   }
 
   /**
    * Actualiza la organización (p. ej. tasa de cambio). Solo ADMIN/SUPER_ADMIN.
+   * Registra en audit log quién cambió la tasa.
    */
   async updateOrganization(
     organizationId: number,
     dto: UpdateOrganizationDto,
+    actorUserId: number,
   ) {
-    const data: { exchangeRate?: number } = {};
+    const data: { exchangeRate?: number; rateUpdatedAt?: Date } = {};
     if (dto.exchangeRate !== undefined) {
       data.exchangeRate = dto.exchangeRate;
+      data.rateUpdatedAt = new Date();
     }
     if (Object.keys(data).length === 0) {
       return this.getOrganization(organizationId);
     }
+
+    const orgBefore = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { exchangeRate: true },
+    });
+    const oldRate = orgBefore?.exchangeRate ?? null;
+
     await this.prisma.organization.update({
       where: { id: organizationId },
       data,
     });
+
+    const actor = await this.prisma.user.findUnique({
+      where: { id: actorUserId },
+      select: { email: true },
+    });
+    await this.prisma.auditLog.create({
+      data: {
+        organizationId,
+        userId: actorUserId,
+        action: 'EXCHANGE_RATE_UPDATE',
+        entityType: 'organization',
+        entityId: String(organizationId),
+        oldValue: oldRate != null ? { exchangeRate: oldRate } : undefined,
+        newValue: { exchangeRate: dto.exchangeRate },
+        actorEmail: actor?.email ?? undefined,
+        targetSummary: `Tasa BCV: ${oldRate ?? '—'} → ${dto.exchangeRate}`,
+      },
+    });
+
     return this.getOrganization(organizationId);
   }
 
@@ -74,15 +111,6 @@ export class TenantsService {
     return this.getMembers(organizationId);
   }
 
-  /** Peso jerárquico para ordenar roles (mayor = más arriba en la lista) */
-  private static readonly ROLE_ORDER: Record<string, number> = {
-    SUPER_ADMIN: 5,
-    ADMIN: 4,
-    MANAGER: 3,
-    SELLER: 2,
-    WAREHOUSE: 1,
-  };
-
   /**
    * Obtiene miembros de la organización según visibilidad del rol del solicitante.
    * - SUPER_ADMIN / ADMIN: lista completa.
@@ -96,7 +124,7 @@ export class TenantsService {
       where: {
         organizationId,
         status: 'ACTIVE',
-        ...(role === 'MANAGER'
+        ...(role === ROLES.MANAGER
           ? { role: { in: ['SELLER', 'WAREHOUSE'] } }
           : {}),
       },
@@ -113,7 +141,7 @@ export class TenantsService {
     });
 
     // SELLER / WAREHOUSE: no ven a nadie (lista vacía)
-    if (role === 'SELLER' || role === 'WAREHOUSE') {
+    if (role === ROLES.SELLER || role === ROLES.WAREHOUSE) {
       return [];
     }
 
@@ -128,8 +156,7 @@ export class TenantsService {
       joinedAt: m.joinedAt,
     }));
 
-    const roleWeight = (r: string) =>
-      TenantsService.ROLE_ORDER[String(r).toUpperCase()] ?? 0;
+    const roleWeight = (r: string) => ROLE_ORDER[String(r).toUpperCase()] ?? 0;
 
     mapped.sort((a, b) => {
       const diff = roleWeight(b.role) - roleWeight(a.role);
@@ -163,24 +190,44 @@ export class TenantsService {
 
     const role = String(requesterRole).toUpperCase().trim();
     const newRole = String(dto.newRole).toUpperCase().trim() as Role;
+    const perms = getPermissions(role);
 
-    if (role !== 'SUPER_ADMIN' && role !== 'ADMIN') {
+    if (!perms.canManageUsers) {
       throw new ForbiddenException('Solo un administrador puede cambiar roles');
     }
 
-    if (String(membership.role).toUpperCase() === 'SUPER_ADMIN' && role !== 'SUPER_ADMIN') {
+    if (String(membership.role).toUpperCase() === ROLES.SUPER_ADMIN && role !== ROLES.SUPER_ADMIN) {
       throw new ForbiddenException('No puedes cambiar el rol del propietario (SUPER_ADMIN)');
     }
 
-    if (membership.userId === requesterUserId && newRole === 'SUPER_ADMIN') {
+    if (membership.userId === requesterUserId && newRole === ROLES.SUPER_ADMIN) {
       throw new ForbiddenException('No puedes promoverse a ti mismo a propietario');
     }
 
+    const oldRole = String(membership.role).toUpperCase();
     const updated = await this.prisma.member.update({
       where: { id: memberId },
       data: { role: newRole as Role },
       include: {
         user: { select: { id: true, email: true, fullName: true, avatarUrl: true } },
+      },
+    });
+
+    const actor = await this.prisma.user.findUnique({
+      where: { id: requesterUserId },
+      select: { email: true },
+    });
+    await this.prisma.auditLog.create({
+      data: {
+        organizationId,
+        userId: requesterUserId,
+        action: 'MEMBER_ROLE_CHANGE',
+        entityType: 'member',
+        entityId: String(memberId),
+        oldValue: { role: oldRole },
+        newValue: { role: newRole },
+        actorEmail: actor?.email ?? undefined,
+        targetSummary: `${membership.user.fullName || membership.user.email}: ${oldRole} → ${newRole}`,
       },
     });
 
@@ -220,18 +267,39 @@ export class TenantsService {
     }
 
     const role = String(requesterRole).toUpperCase().trim();
-    const canDelete = role === 'SUPER_ADMIN' || role === 'ADMIN';
-    if (!canDelete) {
+    const perms = getPermissions(role);
+    if (!perms.canManageUsers) {
       throw new ForbiddenException('Solo un administrador puede desactivar miembros');
     }
-
-    if (role === 'ADMIN' && String(membership.role).toUpperCase() === 'SUPER_ADMIN') {
+    if (!canDeleteSuperAdmin(role) && String(membership.role).toUpperCase() === ROLES.SUPER_ADMIN) {
       throw new ForbiddenException('Un ADMIN no puede desactivar al propietario (SUPER_ADMIN)');
     }
 
     await this.prisma.member.update({
       where: { id: memberId },
       data: { status: 'SUSPENDED' },
+    });
+
+    const actor = await this.prisma.user.findUnique({
+      where: { id: requesterUserId },
+      select: { email: true },
+    });
+    await this.prisma.auditLog.create({
+      data: {
+        organizationId,
+        userId: requesterUserId,
+        action: 'MEMBER_DEACTIVATED',
+        entityType: 'member',
+        entityId: String(memberId),
+        newValue: {
+          targetUserId: membership.userId,
+          email: membership.user.email,
+          fullName: membership.user.fullName,
+          role: membership.role,
+        },
+        actorEmail: actor?.email ?? undefined,
+        targetSummary: `Usuario desactivado: ${membership.user.fullName || membership.user.email} (${membership.role})`,
+      },
     });
 
     return {
@@ -264,9 +332,9 @@ export class TenantsService {
     }
 
     const role = String(requesterRole || '').toUpperCase().trim();
-    const canDelete = role === 'OWNER' || role === 'ADMIN' || role === 'SUPER_ADMIN';
-    if (!canDelete) {
-      throw new ForbiddenException('Solo un OWNER o ADMIN puede eliminar usuarios');
+    const perms = getPermissions(role);
+    if (!perms.canManageUsers) {
+      throw new ForbiddenException('Solo un administrador puede eliminar usuarios');
     }
 
     const membership = await this.prisma.member.findFirst({
@@ -289,13 +357,35 @@ export class TenantsService {
     }
 
     // Seguridad adicional: un ADMIN no puede eliminar un SUPER_ADMIN
-    if (role === 'ADMIN' && String(membership.role).toUpperCase() === 'SUPER_ADMIN') {
+    if (!canDeleteSuperAdmin(role) && String(membership.role).toUpperCase() === ROLES.SUPER_ADMIN) {
       throw new ForbiddenException('Un ADMIN no puede eliminar un SUPER_ADMIN');
     }
 
     await this.prisma.member.update({
       where: { id: membership.id },
       data: { status: 'SUSPENDED' },
+    });
+
+    const actor = await this.prisma.user.findUnique({
+      where: { id: requesterUserId },
+      select: { email: true },
+    });
+    await this.prisma.auditLog.create({
+      data: {
+        organizationId,
+        userId: requesterUserId,
+        action: 'MEMBER_DEACTIVATED',
+        entityType: 'member',
+        entityId: String(membership.id),
+        newValue: {
+          targetUserId: membership.userId,
+          email: membership.user.email,
+          fullName: membership.user.fullName,
+          role: membership.role,
+        },
+        actorEmail: actor?.email ?? undefined,
+        targetSummary: `Usuario desactivado: ${membership.user.fullName || membership.user.email} (${membership.role})`,
+      },
     });
 
     return {
@@ -305,6 +395,29 @@ export class TenantsService {
       fullName: membership.user.fullName,
       organizationId,
     };
+  }
+
+  /**
+   * Historial de acciones sensibles (audit log). Solo SUPER_ADMIN y ADMIN.
+   */
+  async getAuditLog(organizationId: number, limit = 100) {
+    const logs = await this.prisma.auditLog.findMany({
+      where: { organizationId },
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(limit, 200),
+      select: {
+        id: true,
+        action: true,
+        entityType: true,
+        entityId: true,
+        oldValue: true,
+        newValue: true,
+        actorEmail: true,
+        targetSummary: true,
+        createdAt: true,
+      },
+    });
+    return logs;
   }
 
   /**

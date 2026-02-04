@@ -29,6 +29,7 @@ model User {
   invitations   Invitation[]    // Invitaciones enviadas
   tasksAssigned  Task[] @relation("TasksAssigned")         // Tareas asignadas al empleado
   tasksCreated   Task[] @relation("TasksCreated")         // Tareas que creó (admin)
+  auditLogs      AuditLog[]                              // Acciones sensibles registradas
 
   @@index([isSuperAdmin])
   @@map("users")
@@ -97,13 +98,14 @@ enum Plan {
 // ------------------------------------------
 
 model Organization {
-  id            Int             @id @default(autoincrement())
-  nombre        String          // Nombre de la organización
-  slug          String          @unique // Slug único para URLs (ej: "mi-empresa")
-  plan          Plan            @default(FREE)
-  exchangeRate  Float           @default(1.0) // Tasa BCV/Paralelo (USD/VES u otra moneda)
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  id              Int             @id @default(autoincrement())
+  nombre          String          // Nombre de la organización
+  slug            String          @unique // Slug único para URLs (ej: "mi-empresa")
+  plan            Plan            @default(FREE)
+  exchangeRate    Float           @default(1.0) // Tasa BCV/Paralelo (USD/VES u otra moneda)
+  rateUpdatedAt   DateTime?       // Última actualización de la tasa (para tarea "Actualizar Tasa del Día")
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
   // Relaciones
   members          Member[]
@@ -116,6 +118,7 @@ model Organization {
   expenses         Expense[]
   invitations      Invitation[] // Invitaciones para unirse a la organización
   tasks            Task[]       // Tareas de la organización (workflow)
+  auditLogs        AuditLog[]   // Historial de acciones sensibles
 
   @@index([slug])
   @@map("organizations")
@@ -433,4 +436,30 @@ model Task {
   @@index([status])
   @@index([read])
   @@map("tasks")
+}
+
+// ------------------------------------------
+// AUDIT LOG (Historial de cambios - acciones sensibles)
+// ------------------------------------------
+model AuditLog {
+  id             Int       @id @default(autoincrement())
+  organizationId Int
+  userId         Int       // Quién realizó la acción (actor)
+  action         String    // EXCHANGE_RATE_UPDATE, MEMBER_DEACTIVATED, MEMBER_ROLE_CHANGE
+  entityType     String?   // organization, member
+  entityId       String?   // ID del recurso afectado
+  oldValue       Json?     // Valor anterior (ej: { exchangeRate: 36.5 })
+  newValue       Json?     // Valor nuevo (ej: { exchangeRate: 40 })
+  actorEmail     String?   // Email del actor (para mostrar sin join)
+  targetSummary  String?   // Resumen legible para el admin
+  createdAt      DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id])
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([action])
+  @@map("audit_logs")
 }

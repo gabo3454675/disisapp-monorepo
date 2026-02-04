@@ -5,17 +5,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '@/common/prisma/prisma.service';
+import { getRoleOrder } from '@/common/constants/roles.constants';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { TaskStatus, TaskPriority } from '@prisma/client';
-
-/** Peso jerárquico: mayor = más autoridad. Solo se puede asignar a usuarios con rol menor o igual. */
-const ROLE_ORDER: Record<string, number> = {
-  SUPER_ADMIN: 5,
-  ADMIN: 4,
-  MANAGER: 3,
-  SELLER: 2,
-  WAREHOUSE: 1,
-};
 
 @Injectable()
 export class TasksService {
@@ -61,8 +53,8 @@ export class TasksService {
     }
 
     // Seguridad: el creador solo puede asignar a usuarios con rol inferior o igual al suyo
-    const creatorWeight = ROLE_ORDER[String(creatorMembership.role).toUpperCase()] ?? 0;
-    const assignedWeight = ROLE_ORDER[String(assignedMembership.role).toUpperCase()] ?? 0;
+    const creatorWeight = getRoleOrder(creatorMembership.role);
+    const assignedWeight = getRoleOrder(assignedMembership.role);
     if (creatorWeight < assignedWeight) {
       throw new ForbiddenException(
         'No puedes asignar tareas a un usuario con rol superior al tuyo',
@@ -233,5 +225,76 @@ export class TasksService {
     });
 
     return updated;
+  }
+
+  /**
+   * Cuenta tareas no leídas asignadas al usuario (para badge de notificaciones).
+   */
+  async getMyUnreadCount(userId: number): Promise<{ count: number }> {
+    const count = await this.prisma.task.count({
+      where: {
+        assignedToId: userId,
+        read: false,
+        status: { in: [TaskStatus.PENDING, TaskStatus.IN_PROGRESS] },
+      },
+    });
+    return { count };
+  }
+
+  /**
+   * Marca una tarea como leída. Solo el asignado o un admin de la organización.
+   * organizationId se obtiene de la tarea (no requiere header).
+   */
+  async markAsRead(taskId: number, userId: number) {
+    const task = await this.prisma.task.findUnique({
+      where: { id: taskId },
+    });
+    if (!task) {
+      throw new NotFoundException('Tarea no encontrada');
+    }
+    const organizationId = task.organizationId;
+    const isAssigned = task.assignedToId === userId;
+    const membership = await this.prisma.member.findFirst({
+      where: { userId, organizationId, status: 'ACTIVE' },
+    });
+    const isAdmin =
+      membership &&
+      (membership.role === 'ADMIN' || membership.role === 'SUPER_ADMIN');
+    if (!isAssigned && !isAdmin) {
+      throw new ForbiddenException(
+        'Solo el asignado o un administrador pueden marcar la tarea como leída',
+      );
+    }
+    await this.prisma.task.update({
+      where: { id: taskId },
+      data: { read: true },
+    });
+    return { ok: true };
+  }
+
+  /**
+   * Tareas creadas por el usuario (para que el gerente vea estado actualizado por el asignado).
+   */
+  async getCreatedByMe(userId: number) {
+    const tasks = await this.prisma.task.findMany({
+      where: { createdById: userId },
+      include: {
+        assignedTo: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
+        organization: {
+          select: { id: true, nombre: true },
+        },
+        invoice: {
+          select: { id: true, totalAmount: true, status: true },
+        },
+      },
+      orderBy: [{ updatedAt: 'desc' }],
+    });
+    return tasks;
   }
 }

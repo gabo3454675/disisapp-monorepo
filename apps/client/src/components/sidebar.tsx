@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePermission } from '@/hooks/usePermission';
 import { usePWAInstall } from '@/hooks/usePWAInstall';
+import { useExchangeRate } from '@/hooks/useExchangeRate';
 
 const navigationItems = [
   { id: 'dashboard', label: 'Dashboard', icon: Grid2x2, href: '/', permission: 'canViewDashboard' },
@@ -47,24 +48,6 @@ export default function Sidebar() {
   const permissions = usePermission();
   const { isInstallable, install } = usePWAInstall();
   
-  // Debug SIEMPRE ejecutar
-  if (typeof window !== 'undefined') {
-    console.log('🔍 [Sidebar] ===== DEBUG SIDEBAR =====');
-    console.log('[Sidebar] Permissions:', permissions);
-    console.log('[Sidebar] canManageTeam:', permissions.canManageTeam);
-    console.log('[Sidebar] Role:', permissions.role);
-    console.log('[Sidebar] Navigation Items Count:', navigationItems.length);
-    const filteredItems = navigationItems.filter((item) => {
-      if (item.permission) {
-        const permissionKey = item.permission as keyof typeof permissions;
-        return permissions[permissionKey] === true;
-      }
-      return true;
-    });
-    console.log('[Sidebar] Filtered Items Count:', filteredItems.length);
-    console.log('[Sidebar] Settings Item:', navigationItems.find(item => item.id === 'settings'));
-  }
-
   // Determinar el item activo basado en la ruta actual
   const getActiveItem = () => {
     if (pathname === '/') return 'dashboard';
@@ -118,11 +101,12 @@ export default function Sidebar() {
     return user?.email?.slice(0, 2).toUpperCase() || 'U';
   };
 
-  // Obtener organización/empresa actual
+  // Obtener organización/empresa actual y tasa global (reactiva al guardar en Configuración)
   const currentOrg = getCurrentOrganization();
   const organizations = getOrganizations();
   const hasMultipleOrganizations = organizations.length > 1;
-  
+  const displayRate = useExchangeRate();
+
   const organizationName = currentOrg?.name || 'Mi Organización';
   const organizationInitials = organizationName
     .split(' ')
@@ -130,13 +114,9 @@ export default function Sidebar() {
     .join('')
     .toUpperCase()
     .slice(0, 2);
-  
+
   // ID seleccionado (priorizar organizationId)
   const selectedId = selectedOrganizationId || selectedCompanyId;
-  const displayRate =
-    currentOrg && 'exchangeRate' in currentOrg && currentOrg.exchangeRate != null
-      ? Number(currentOrg.exchangeRate)
-      : null;
 
   return (
     <aside
@@ -160,7 +140,7 @@ export default function Sidebar() {
               />
               <h1 className="text-xl font-bold text-sidebar-foreground truncate">Facturación</h1>
             </div>
-            {displayRate != null && (
+            {displayRate !== 1 && (
               <span className="text-xs text-muted-foreground font-medium tabular-nums">
                 Tasa: {displayRate.toFixed(2)}
               </span>
@@ -209,7 +189,7 @@ export default function Sidebar() {
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="outline"
-                  className="w-full justify-between text-sidebar-foreground border-sidebar-border hover:bg-sidebar-accent"
+                  className="w-full justify-between text-sidebar-foreground border-sidebar-border hover:bg-sidebar-accent min-h-[44px] py-3"
                 >
                   <span className="text-sm truncate">{organizationName}</span>
                   <ChevronDown className="h-4 w-4 flex-shrink-0" />
@@ -227,7 +207,7 @@ export default function Sidebar() {
                   <DropdownMenuItem
                     key={org.id}
                     onClick={() => handleOrganizationChange(org.id)}
-                    className="cursor-pointer"
+                    className="cursor-pointer min-h-[44px] py-3"
                   >
                     <div className="flex items-center justify-between w-full">
                       <div className="flex flex-col">
@@ -289,7 +269,7 @@ export default function Sidebar() {
                   <DropdownMenuItem
                     key={org.id}
                     onClick={() => handleOrganizationChange(org.id)}
-                    className="cursor-pointer"
+                    className="cursor-pointer min-h-[44px] py-3"
                   >
                     <div className="flex items-center justify-between w-full">
                       <div className="flex flex-col">
@@ -321,25 +301,18 @@ export default function Sidebar() {
       <nav className="flex-1 p-4 space-y-2 overflow-y-auto overflow-x-hidden min-h-0">
         {navigationItems
           .filter((item) => {
-            // Filtrar items según permisos
             if (item.permission) {
               const permissionKey = item.permission as keyof typeof permissions;
               const permissionValue = permissions[permissionKey];
               const hasPermission = permissionValue === true;
-              
-              // Debug SIEMPRE para settings
-              if (typeof window !== 'undefined' && item.id === 'settings') {
-                console.log(`🔍 [Sidebar Filter] Item: "${item.label}"`);
-                console.log(`  - Permission key: ${item.permission}`);
-                console.log(`  - Permission value: ${permissionValue}`);
-                console.log(`  - Has permission: ${hasPermission}`);
-                console.log(`  - Current role: ${permissions.role}`);
-                console.log(`  - Will show: ${hasPermission}`);
+              // ADMIN y SUPER_ADMIN deben ver Configuración (Invitar Miembro, Tasa BCV)
+              const role = String(permissions.role || '').toUpperCase();
+              if (item.id === 'settings') {
+                return hasPermission || role === 'ADMIN' || role === 'SUPER_ADMIN';
               }
-              
               return hasPermission;
             }
-            return true; // Si no tiene permission definido, mostrar siempre
+            return true;
           })
           .map((item) => (
             <Button

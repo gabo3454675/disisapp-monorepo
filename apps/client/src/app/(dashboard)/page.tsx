@@ -11,8 +11,10 @@ import { Badge } from '@/components/ui/badge';
 import { useAuthStore } from '@/store/useAuthStore';
 import MetricCard from '@/components/metric-card';
 import NotificationsSection from '@/components/notifications-section';
+import { RateConfigModal } from '@/components/rate-config-modal';
 import apiClient from '@/lib/api';
 import { usePermission } from '@/hooks/usePermission';
+import { TrendingUp } from 'lucide-react';
 
 interface DashboardSummary {
   totalSalesToday: number;
@@ -78,16 +80,53 @@ interface PendingTask {
   invoice?: { id: number; totalAmount: unknown; status: string } | null;
 }
 
+interface CreatedByMeTask {
+  id: number;
+  title: string;
+  description?: string | null;
+  status: string;
+  priority: string;
+  createdAt: string;
+  updatedAt: string;
+  assignedTo: { id: number; fullName: string | null; email: string };
+  organization: { id: number; nombre: string };
+  invoice?: { id: number; totalAmount: unknown; status: string } | null;
+}
+
+/** Retorna true si la tasa fue actualizada hoy (misma fecha que hoy). */
+function isRateUpdatedToday(rateUpdatedAt: string | null | undefined): boolean {
+  if (!rateUpdatedAt) return false;
+  try {
+    const d = new Date(rateUpdatedAt);
+    const today = new Date();
+    return d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
+  } catch {
+    return false;
+  }
+}
+
 export default function DashboardPage() {
   const router = useRouter();
-  const { isAuthenticated, user, selectedCompanyId, _hasHydrated } = useAuthStore();
-  const { canViewFinancialCharts } = usePermission();
+  const { isAuthenticated, user, selectedCompanyId, _hasHydrated, getCurrentOrganization } = useAuthStore();
+  const { canViewFinancialCharts, isSuperAdmin, isAdmin, isManager } = usePermission();
   const [summary, setSummary] = useState<DashboardSummary>(DEFAULT_SUMMARY);
   const [pendingTasks, setPendingTasks] = useState<PendingTask[]>([]);
+  const [createdByMeTasks, setCreatedByMeTasks] = useState<CreatedByMeTask[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(false);
+  const [loadingCreatedByMe, setLoadingCreatedByMe] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [rateConfigModalOpen, setRateConfigModalOpen] = useState(false);
+
+  const canSeeCreatedByMe = isSuperAdmin || isAdmin || isManager;
+
+  const currentOrg = getCurrentOrganization();
+  const orgWithRate = currentOrg && 'rateUpdatedAt' in currentOrg ? currentOrg : null;
+  const showRateSystemTask =
+    (isSuperAdmin || isAdmin || isManager) &&
+    !!orgWithRate &&
+    !isRateUpdatedToday(orgWithRate.rateUpdatedAt);
 
   // Asegurar que el componente esté montado en el cliente
   useEffect(() => {
@@ -138,11 +177,34 @@ export default function DashboardPage() {
     }
   }, [isAuthenticated]);
 
+  const fetchCreatedByMeTasks = useCallback(async () => {
+    if (!isAuthenticated || !canSeeCreatedByMe) return;
+    try {
+      setLoadingCreatedByMe(true);
+      const res = await apiClient.get<CreatedByMeTask[]>('/tasks/created-by-me');
+      setCreatedByMeTasks(Array.isArray(res.data) ? res.data : []);
+    } catch {
+      setCreatedByMeTasks([]);
+    } finally {
+      setLoadingCreatedByMe(false);
+    }
+  }, [isAuthenticated, canSeeCreatedByMe]);
+
   useEffect(() => {
     if (mounted && _hasHydrated && isAuthenticated) {
       fetchMyPendingTasks();
+      fetchCreatedByMeTasks();
     }
-  }, [mounted, _hasHydrated, isAuthenticated, fetchMyPendingTasks]);
+  }, [mounted, _hasHydrated, isAuthenticated, fetchMyPendingTasks, fetchCreatedByMeTasks]);
+
+  useEffect(() => {
+    const onTasksUpdated = () => {
+      fetchMyPendingTasks();
+      fetchCreatedByMeTasks();
+    };
+    window.addEventListener('tasks-updated', onTasksUpdated);
+    return () => window.removeEventListener('tasks-updated', onTasksUpdated);
+  }, [fetchMyPendingTasks, fetchCreatedByMeTasks]);
 
   useEffect(() => {
     if (mounted && _hasHydrated && !isAuthenticated) {
@@ -276,10 +338,36 @@ export default function DashboardPage() {
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
-              ) : pendingTasks.length === 0 ? (
+              ) : pendingTasks.length === 0 && !showRateSystemTask ? (
                 <p className="text-sm text-muted-foreground text-center py-8">No tienes tareas pendientes</p>
               ) : (
                 <div className="space-y-3">
+                  {/* Tarea de sistema: Actualizar Tasa del Día (solo SUPER_ADMIN, ADMIN, MANAGER) */}
+                  {showRateSystemTask && (
+                    <div className="flex items-start justify-between gap-4 p-4 rounded-lg bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/15 transition-colors">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-foreground">Actualizar Tasa del Día</p>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          La tasa de cambio no ha sido actualizada hoy. Por favor verifica el valor actual.
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-2">Tarea de sistema</p>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <Badge variant="secondary" className="text-xs bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/40">
+                          Alta
+                        </Badge>
+                        <Button
+                          variant="default"
+                          size="sm"
+                          onClick={() => setRateConfigModalOpen(true)}
+                          className="gap-1.5"
+                        >
+                          <TrendingUp className="h-3.5 w-3.5" />
+                          Configurar tasa
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                   {pendingTasks.map((task) => (
                     <div
                       key={task.id}
@@ -316,6 +404,56 @@ export default function DashboardPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Tareas que asigné - Solo SUPER_ADMIN, ADMIN, MANAGER (ven estado actualizado por el asignado) */}
+          {canSeeCreatedByMe && (
+            <Card className="mb-8 bg-card border-border">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ListTodo className="h-5 w-5" />
+                  Tareas que asigné
+                </CardTitle>
+                <CardDescription>Estado actualizado por el equipo (En progreso / Completada)</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {loadingCreatedByMe ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : createdByMeTasks.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-8">No has asignado tareas aún</p>
+                ) : (
+                  <div className="space-y-3">
+                    {createdByMeTasks.map((t) => (
+                      <div
+                        key={t.id}
+                        className="flex items-start justify-between gap-4 p-4 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-foreground">{t.title}</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Asignada a: {t.assignedTo?.fullName || t.assignedTo?.email} • {t.organization?.nombre}
+                          </p>
+                        </div>
+                        <Badge
+                          variant="secondary"
+                          className={
+                            t.status === 'DONE'
+                              ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/40'
+                              : t.status === 'IN_PROGRESS'
+                                ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400 border-blue-500/40'
+                                : 'bg-slate-500/20 text-slate-600 dark:text-slate-400 border-slate-500/40'
+                          }
+                        >
+                          {t.status === 'PENDING' ? 'Pendiente' : t.status === 'IN_PROGRESS' ? 'En progreso' : 'Completada'}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Gráficos financieros - Solo para SUPER_ADMIN/ADMIN/MANAGER */}
           {canViewFinancialCharts && (
@@ -415,6 +553,8 @@ export default function DashboardPage() {
           </Card>
         </>
       )}
+
+      <RateConfigModal open={rateConfigModalOpen} onOpenChange={setRateConfigModalOpen} />
     </div>
   );
 }
