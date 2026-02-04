@@ -3,9 +3,9 @@
 import { useCallback } from 'react';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePermission } from '@/hooks/usePermission';
-import { useExchangeRate } from '@/hooks/useExchangeRate';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { Loader2 } from 'lucide-react';
 
 function isRateUpdatedToday(rateUpdatedAt: string | null | undefined): boolean {
   if (!rateUpdatedAt) return false;
@@ -28,17 +28,22 @@ interface ExchangeRateIndicatorProps {
 }
 
 /**
- * Indicador de tasa en header: muestra "Bs. [valor]" con semáforo (verde = actualizado hoy, ámbar/rojo = desactualizado).
- * Todos ven el indicador; solo ADMIN y MANAGER (y SUPER_ADMIN) pueden abrir la configuración al tocar.
+ * Indicador de tasa en header (desktop y móvil): lee exchangeRate del store global.
+ * Se re-renderiza cuando se actualiza la tasa en Configuración o al cambiar de organización.
+ * Muestra "Bs. XX.XX" con 2 decimales; si no hay tasa, muestra "---" o loading.
  */
 export function ExchangeRateIndicator({ onOpenConfig, className }: ExchangeRateIndicatorProps) {
-  const rate = useExchangeRate();
-  const getCurrentOrganization = useAuthStore((s) => s.getCurrentOrganization);
-  const { isSuperAdmin, isAdmin, isManager } = usePermission();
+  const { user, selectedOrganizationId, selectedCompanyId } = useAuthStore();
 
-  const currentOrg = getCurrentOrganization();
-  const orgWithRate = currentOrg && 'rateUpdatedAt' in currentOrg ? currentOrg : null;
-  const isUpToDate = isRateUpdatedToday(orgWithRate?.rateUpdatedAt);
+  const selectedId = selectedOrganizationId || selectedCompanyId;
+  const currentOrg = user?.organizations?.length && selectedId
+    ? user.organizations.find((o) => o.id === selectedId)
+    : null;
+  const rate = currentOrg?.exchangeRate;
+  const hasRate = rate != null && Number.isFinite(rate);
+  const isLoading = !user && selectedId === null;
+  const isUpToDate = isRateUpdatedToday(currentOrg?.rateUpdatedAt);
+  const { isSuperAdmin, isAdmin, isManager } = usePermission();
   const canEdit = isSuperAdmin || isAdmin || isManager;
 
   const handleClick = useCallback(() => {
@@ -66,11 +71,18 @@ export function ExchangeRateIndicator({ onOpenConfig, className }: ExchangeRateI
       <span
         className={cn(
           'h-2 w-2 shrink-0 rounded-full',
-          isUpToDate ? 'bg-emerald-500' : 'bg-amber-500'
+          hasRate && (isUpToDate ? 'bg-emerald-500' : 'bg-amber-500'),
+          !hasRate && 'bg-muted-foreground/50'
         )}
         aria-hidden
       />
-      <span className="tabular-nums">Bs. {rate.toFixed(2)}</span>
+      {isLoading ? (
+        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-hidden />
+      ) : hasRate ? (
+        <span className="tabular-nums">Bs. {Number(rate).toFixed(2)}</span>
+      ) : (
+        <span className="text-muted-foreground tabular-nums">---</span>
+      )}
     </button>
   );
 }

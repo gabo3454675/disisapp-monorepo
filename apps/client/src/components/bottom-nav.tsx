@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { Grid2x2, ShoppingCart, Box, MoreVertical, Users, FileText, DollarSign, Settings } from 'lucide-react';
+import { Grid2x2, ShoppingCart, Box, MoreVertical, Users, FileText, DollarSign, Settings, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -49,6 +49,7 @@ export default function BottomNav() {
     selectOrganization,
     getOrganizations,
     getCurrentOrganization,
+    clearAuth,
   } = useAuthStore();
 
   const organizations = getOrganizations();
@@ -98,6 +99,12 @@ export default function BottomNav() {
   const handleMenuItemClick = (href: string) => {
     router.push(href);
     setIsSheetOpen(false);
+  };
+
+  const handleLogout = () => {
+    setIsSheetOpen(false);
+    clearAuth();
+    router.push('/login');
   };
 
   return (
@@ -204,6 +211,14 @@ export default function BottomNav() {
                   </Button>
                 );
               })}
+              <Button
+                variant="ghost"
+                className="w-full justify-start gap-3 h-12 mt-4 pt-4 border-t border-border text-destructive hover:text-destructive hover:bg-destructive/10"
+                onClick={handleLogout}
+              >
+                <LogOut className="h-5 w-5" />
+                <span className="text-base">Cerrar Sesión</span>
+              </Button>
             </div>
           </SheetContent>
         </Sheet>
