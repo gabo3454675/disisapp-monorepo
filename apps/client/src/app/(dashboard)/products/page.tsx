@@ -240,24 +240,26 @@ export default function ProductsPage() {
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto">
       <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex flex-col gap-4">
           <div>
             <h1 className="text-3xl md:text-4xl font-bold mb-2">Productos</h1>
             <p className="text-muted-foreground">Gestiona tu catálogo de productos</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:justify-end">
             <Button
               variant="outline"
               onClick={handleDownloadInventoryTemplate}
               disabled={importing}
+              className="w-full sm:w-auto shrink-0"
             >
               <Upload className="mr-2 h-4 w-4" />
               Descargar Plantilla
             </Button>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => document.getElementById('file-input')?.click()}
               disabled={importing}
+              className="w-full sm:w-auto shrink-0"
             >
               {importing ? (
                 <>
@@ -339,7 +341,11 @@ export default function ProductsPage() {
               }}
             />
             {canManageProducts && (
-              <Button onClick={() => handleOpenDialog()} disabled={importing}>
+              <Button
+                onClick={() => handleOpenDialog()}
+                disabled={importing}
+                className="w-full sm:w-auto shrink-0"
+              >
                 <Plus className="mr-2 h-4 w-4" />
                 Nuevo Producto
               </Button>
@@ -349,9 +355,9 @@ export default function ProductsPage() {
 
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Lista de Productos</CardTitle>
-              <div className="relative w-64">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle className="shrink-0">Lista de Productos</CardTitle>
+              <div className="relative w-full sm:w-64">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Buscar productos..."

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { Grid2x2, ShoppingCart, Box, MoreVertical, Users, FileText, DollarSign, Settings, LogOut } from 'lucide-react';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -192,6 +193,7 @@ export default function BottomNav() {
             </div>
 
             <div className="mt-6 space-y-2">
+              <ThemeToggle variant="full" className="mb-2" />
               {filteredAdditionalItems.map((item) => {
                 const isActive = pathname.startsWith(item.href);
                 return (

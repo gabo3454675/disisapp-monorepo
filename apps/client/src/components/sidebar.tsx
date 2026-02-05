@@ -18,6 +18,7 @@ import { useAuthStore } from '@/store/useAuthStore';
 import { usePermission } from '@/hooks/usePermission';
 import { usePWAInstall } from '@/hooks/usePWAInstall';
 import { useExchangeRate } from '@/hooks/useExchangeRate';
+import { ThemeToggle } from '@/components/theme-toggle';
 
 const navigationItems = [
   { id: 'dashboard', label: 'Dashboard', icon: Grid2x2, href: '/', permission: 'canViewDashboard' },
@@ -350,6 +351,10 @@ export default function Sidebar() {
                 <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
               </div>
             </div>
+            <div className="flex items-center justify-between gap-2 py-1">
+              <span className="text-xs text-sidebar-foreground/80">Modo oscuro</span>
+              <ThemeToggle variant="compact" className="shrink-0" />
+            </div>
             <Button
               variant="ghost"
               className="w-full justify-start gap-2 text-sidebar-foreground hover:bg-sidebar-accent text-sm h-8"
@@ -360,17 +365,20 @@ export default function Sidebar() {
             </Button>
           </div>
         ) : (
-          <Button
-            variant="ghost"
-            className="w-full justify-center p-0 h-10 w-10 flex-shrink-0"
-            title={`${user?.fullName || 'Usuario'} - ${user?.email}`}
-          >
-            <Avatar className="h-8 w-8">
-              <AvatarFallback className="bg-gradient-to-br from-blue-500 to-emerald-500 text-white text-xs font-semibold">
-                {getUserInitials()}
-              </AvatarFallback>
-            </Avatar>
-          </Button>
+          <div className="flex flex-col items-center gap-2">
+            <Button
+              variant="ghost"
+              className="w-full justify-center p-0 h-10 w-10 flex-shrink-0"
+              title={`${user?.fullName || 'Usuario'} - ${user?.email}`}
+            >
+              <Avatar className="h-8 w-8">
+                <AvatarFallback className="bg-gradient-to-br from-blue-500 to-emerald-500 text-white text-xs font-semibold">
+                  {getUserInitials()}
+                </AvatarFallback>
+              </Avatar>
+            </Button>
+            <ThemeToggle variant="compact" />
+          </div>
         )}
       </div>
     </aside>

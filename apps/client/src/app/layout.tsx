@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import { Toaster } from 'sonner';
+import { ThemeProvider } from '@/components/theme-provider';
 import './globals.css';
 
 const inter = Inter({ subsets: ['latin'] });
@@ -56,9 +57,18 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){var k='disis-theme';try{var v=localStorage.getItem(k);if(v){var s=JSON.parse(v);if(s&&s.state&&s.state.theme==='dark')document.documentElement.classList.add('dark');else document.documentElement.classList.remove('dark');}else document.documentElement.classList.remove('dark');}catch(e){document.documentElement.classList.remove('dark');}})();`,
+          }}
+        />
+      </head>
       <body className={inter.className}>
-        {children}
-        <Toaster richColors position="top-center" closeButton />
+        <ThemeProvider>
+          {children}
+          <Toaster richColors position="top-center" closeButton />
+        </ThemeProvider>
       </body>
     </html>
   );
