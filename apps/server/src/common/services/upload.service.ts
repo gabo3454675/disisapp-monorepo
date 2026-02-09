@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -6,19 +6,22 @@ import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 
 @Injectable()
 export class UploadService {
+  private readonly logger = new Logger(UploadService.name);
   private s3Client: S3Client | null = null;
   private useS3: boolean = false;
+  /** Siempre definido: carpeta local cuando S3 no está configurado */
   private uploadsDir: string;
 
   constructor(private configService: ConfigService) {
-    // Verificar si hay credenciales de AWS S3
+    this.uploadsDir = path.join(process.cwd(), 'uploads');
+
     const awsAccessKeyId = this.configService.get<string>('AWS_ACCESS_KEY_ID');
     const awsSecretAccessKey = this.configService.get<string>('AWS_SECRET_ACCESS_KEY');
     const awsRegion = this.configService.get<string>('AWS_REGION');
     const awsBucket = this.configService.get<string>('AWS_S3_BUCKET');
 
-    if (awsAccessKeyId && awsSecretAccessKey && awsRegion && awsBucket) {
-      // Configurar S3
+    const hasAll = !!(awsAccessKeyId && awsSecretAccessKey && awsRegion && awsBucket);
+    if (hasAll) {
       this.s3Client = new S3Client({
         region: awsRegion,
         credentials: {
@@ -27,13 +30,12 @@ export class UploadService {
         },
       });
       this.useS3 = true;
+      this.logger.log('Upload S3 configurado correctamente');
     } else {
-      // Configurar almacenamiento local
-      this.uploadsDir = path.join(process.cwd(), 'uploads');
-      // Crear directorio si no existe
       if (!fs.existsSync(this.uploadsDir)) {
         fs.mkdirSync(this.uploadsDir, { recursive: true });
       }
+      this.logger.log('Upload usando almacenamiento local (uploads/). S3 no configurado o credenciales incompletas.');
     }
   }
 
@@ -86,6 +88,11 @@ export class UploadService {
     }
 
     const bucket = this.configService.get<string>('AWS_S3_BUCKET');
+    const region = this.configService.get<string>('AWS_REGION');
+    if (!bucket || !region) {
+      throw new BadRequestException('AWS_S3_BUCKET o AWS_REGION no definidos. No se puede subir a S3.');
+    }
+
     const key = `${folder}/${fileName}`;
 
     try {
@@ -94,21 +101,16 @@ export class UploadService {
         Key: key,
         Body: file.buffer,
         ContentType: file.mimetype,
-        ACL: 'public-read', // Hacer el archivo público
+        ACL: 'public-read',
       });
 
       await this.s3Client.send(command);
 
-      // Construir URL pública
-      const region = this.configService.get<string>('AWS_REGION');
-      const baseUrl = this.configService.get<string>(
-        'AWS_S3_BASE_URL',
-        `https://${bucket}.s3.${region}.amazonaws.com`,
-      );
-
+      const baseUrl = this.configService.get<string>('AWS_S3_BASE_URL') ?? `https://${bucket}.s3.${region}.amazonaws.com`;
       return `${baseUrl}/${key}`;
     } catch (error) {
-      throw new BadRequestException(`Error al subir archivo a S3: ${error.message}`);
+      const message = error instanceof Error ? error.message : String(error);
+      throw new BadRequestException(`Error al subir archivo a S3: ${message}`);
     }
   }
 
@@ -142,19 +144,12 @@ export class UploadService {
    * Elimina un archivo (S3 o local)
    */
   async deleteFile(fileUrl: string): Promise<void> {
-    if (this.useS3) {
-      // Extraer key de la URL de S3
-      const urlParts = fileUrl.split('/');
-      const key = urlParts.slice(-2).join('/'); // folder/filename
-
-      if (this.s3Client) {
-        const bucket = this.configService.get<string>('AWS_S3_BUCKET');
-        const command = new PutObjectCommand({
-          Bucket: bucket,
-          Key: key,
-        });
-        // Nota: Para eliminar necesitarías DeleteObjectCommand, pero por ahora solo retornamos
-        // await this.s3Client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+    if (this.useS3 && this.s3Client) {
+      const bucket = this.configService.get<string>('AWS_S3_BUCKET');
+      if (bucket) {
+        const urlParts = fileUrl.split('/');
+        const key = urlParts.slice(-2).join('/');
+        // Nota: Para eliminar en S3 usar DeleteObjectCommand; por ahora solo no hace nada en S3
       }
     } else {
       // Eliminar archivo local

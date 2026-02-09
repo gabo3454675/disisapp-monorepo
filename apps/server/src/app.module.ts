@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { CacheModule, CacheInterceptor } from '@nestjs/cache-manager';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './common/prisma/prisma.module';
@@ -18,6 +19,7 @@ import { ExpensesModule } from './modules/expenses/expenses.module';
 import { ExpenseCategoriesModule } from './modules/expense-categories/expense-categories.module';
 import { InvitationsModule } from './modules/invitations/invitations.module';
 import { TasksModule } from './modules/tasks/tasks.module';
+import { BackupModule } from './modules/backup/backup.module';
 
 @Module({
   imports: [
@@ -25,6 +27,7 @@ import { TasksModule } from './modules/tasks/tasks.module';
       isGlobal: true,
       envFilePath: '.env',
     }),
+    ScheduleModule.forRoot(),
     CacheModule.register({
       ttl: 60, // TTL por defecto de 60 segundos
       max: 100, // Máximo 100 items en caché
@@ -43,6 +46,7 @@ import { TasksModule } from './modules/tasks/tasks.module';
     ExpenseCategoriesModule,
     InvitationsModule,
     TasksModule,
+    BackupModule,
   ],
   controllers: [AppController],
   providers: [

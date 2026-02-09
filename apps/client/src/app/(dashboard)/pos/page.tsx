@@ -10,6 +10,8 @@ import apiClient from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
 import { Badge } from '@/components/ui/badge';
 import { useDebounce } from '@/hooks/useDebounce';
+import { db } from '@/lib/db';
+import { toast } from 'sonner';
 
 interface Product {
   id: number;
@@ -165,36 +167,50 @@ export default function POSPage() {
     };
   }, [cart, currencyMode]);
 
-  // Procesar venta
+  // Procesar venta (online → API; offline → IndexedDB para sincronizar después)
   const handleCheckout = async () => {
     if (cart.length === 0) return;
 
     setProcessing(true);
     setSuccess(false);
 
+    const invoiceData = {
+      customerId: selectedCustomerId || undefined,
+      items: cart.map((item) => ({
+        productId: item.product.id,
+        quantity: item.quantity,
+      })),
+    };
+
+    const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+
     try {
-      const invoiceData = {
-        customerId: selectedCustomerId || undefined,
-        items: cart.map((item) => ({
-          productId: item.product.id,
-          quantity: item.quantity,
-        })),
-      };
-
-      const response = await apiClient.post('/invoices', invoiceData);
-
-      // Éxito: limpiar carrito y refrescar productos
-      setCart([]);
-      setSelectedCustomerId(null);
-      setSuccess(true);
-      setLastInvoiceId(response.data.id); // Guardar ID de factura para PDF
-      await fetchProducts(); // Refrescar para ver stock actualizado
-
-      // Ocultar mensaje de éxito después de 10 segundos
-      setTimeout(() => {
-        setSuccess(false);
-        setLastInvoiceId(null);
-      }, 10000);
+      if (isOffline) {
+        // Modo offline: guardar en IndexedDB (Dexie) para sincronizar al volver online
+        await db.pendingInvoices.add({
+          payload: invoiceData,
+          createdAt: Date.now(),
+          synced: false,
+        });
+        setCart([]);
+        setSelectedCustomerId(null);
+        setSuccess(true);
+        toast.info('Factura guardada localmente', {
+          description: 'Se enviará al servidor cuando haya conexión.',
+        });
+        setTimeout(() => setSuccess(false), 8000);
+      } else {
+        const response = await apiClient.post('/invoices', invoiceData);
+        setCart([]);
+        setSelectedCustomerId(null);
+        setSuccess(true);
+        setLastInvoiceId(response.data.id);
+        await fetchProducts();
+        setTimeout(() => {
+          setSuccess(false);
+          setLastInvoiceId(null);
+        }, 10000);
+      }
     } catch (error: any) {
       alert(error.response?.data?.message || 'Error al procesar la venta');
       console.error('Error processing sale:', error);

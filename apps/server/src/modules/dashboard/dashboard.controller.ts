@@ -30,4 +30,25 @@ export class DashboardController {
   async getLowStock(@ActiveOrganization() organizationId: number) {
     return this.dashboardService.getLowStock(organizationId, 5);
   }
+
+  @Get('health')
+  @UseInterceptors(CacheInterceptor)
+  @CacheTTL(60)
+  async getHealth(@ActiveOrganization() organizationId: number) {
+    return this.dashboardService.getHealth(organizationId);
+  }
+
+  @Get('diagnosis')
+  @UseInterceptors(CacheInterceptor)
+  @CacheTTL(60)
+  async getDiagnosis(@ActiveOrganization() organizationId: number) {
+    return this.dashboardService.getDiagnosis(organizationId);
+  }
+
+  @Get('strategy')
+  @UseInterceptors(CacheInterceptor)
+  @CacheTTL(60)
+  async getStrategy(@ActiveOrganization() organizationId: number) {
+    return this.dashboardService.getStrategy(organizationId);
+  }
 }
