@@ -88,6 +88,7 @@ export class InvoicesController {
     } catch (err: any) {
       const status = err?.status ?? 500;
       const message = err?.message ?? 'Error al generar el PDF';
+      console.error('[PDF] Error generando factura', id, err?.stack || err);
       res.status(status).json({ message });
     }
   }

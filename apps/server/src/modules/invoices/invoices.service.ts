@@ -437,6 +437,15 @@ export class InvoicesService {
     return updatedInvoice;
   }
 
+  /** Convierte Prisma Decimal o cualquier valor a number de forma segura. */
+  private toNum(v: unknown): number {
+    if (v == null) return 0;
+    if (typeof v === 'number' && !Number.isNaN(v)) return v;
+    if (typeof v === 'object' && typeof (v as any).toNumber === 'function') return (v as any).toNumber();
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  }
+
   /**
    * Genera el PDF de la factura en memoria (Buffer). Usa PDFKit - sin Puppeteer/Chromium.
    * Compatible con AWS: no escribe archivos en disco, solo fuentes estándar (Helvetica).
@@ -445,14 +454,17 @@ export class InvoicesService {
   async generatePDF(id: number, organizationId: number): Promise<Buffer> {
     const invoice = await this.findOne(id, organizationId);
     const orgId = invoice.organizationId ?? organizationId;
-    const org = await this.prisma.organization.findUnique({
-      where: { id: orgId },
-      select: { nombre: true, exchangeRate: true, currencyCode: true, currencySymbol: true },
-    });
+    let org: { nombre: string; exchangeRate: unknown; currencyCode: string | null; currencySymbol: string | null } | null = null;
+    if (orgId != null && typeof orgId === 'number') {
+      org = await this.prisma.organization.findUnique({
+        where: { id: orgId },
+        select: { nombre: true, exchangeRate: true, currencyCode: true, currencySymbol: true },
+      });
+    }
     const currencySymbol = org?.currencySymbol ?? '$';
     const currencyCode = org?.currencyCode ?? 'USD';
-    const exchangeRate = Number(org?.exchangeRate ?? 1);
-    const orgName = org?.nombre ?? invoice.company?.name ?? 'Organización';
+    const exchangeRate = this.toNum(org?.exchangeRate ?? 1);
+    const orgName = org?.nombre ?? (invoice.company as any)?.name ?? 'Organización';
 
     const formatMoney = (value: number) => `${currencySymbol} ${value.toFixed(2)}`;
 
@@ -481,17 +493,23 @@ export class InvoicesService {
         const text = '#1f2937';
         const border = '#e5e7eb';
 
-        // Header: disis + organización
+        const company = invoice.company as { name?: string; taxId?: string; address?: string } | null;
         doc.fontSize(20).fillColor(primary).text('disis', 50, 50);
-        doc.fontSize(10).fillColor(text).text(orgName, 50, 72);
-        if (invoice.company?.taxId) doc.text(`RIF: ${invoice.company.taxId}`, 50, 85);
-        if (invoice.company?.address) doc.text(invoice.company.address, 50, 98);
+        doc.fontSize(10).fillColor(text).text(String(orgName ?? '').slice(0, 80), 50, 72);
+        if (company?.taxId) doc.text(`RIF: ${String(company.taxId).slice(0, 30)}`, 50, 85);
+        if (company?.address) doc.text(String(company.address).slice(0, 80), 50, 98);
 
         // Factura (derecha)
         doc.fontSize(16).fillColor(primary).text('FACTURA', 350, 50, { align: 'right' });
+        let dateStr = '';
+        try {
+          dateStr = new Date(invoice.createdAt).toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' });
+        } catch {
+          dateStr = new Date(invoice.createdAt).toISOString().slice(0, 10);
+        }
         doc.fontSize(10).fillColor(text)
           .text(`#${invoice.id}`, 500, 72, { align: 'right' })
-          .text(new Date(invoice.createdAt).toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' }), 500, 85, { align: 'right' });
+          .text(dateStr, 500, 85, { align: 'right' });
 
         // Separador
         const sepY = 115;
@@ -519,19 +537,21 @@ export class InvoicesService {
         doc.moveTo(50, y).lineTo(550, y).strokeColor(border).stroke();
         y += 10;
 
-        for (const item of invoice.items) {
+        const items = Array.isArray(invoice.items) ? invoice.items : [];
+        for (const item of items) {
           if (y > 700) {
             doc.addPage();
             y = 50;
             doc.font('Helvetica').fontSize(9).fillColor(text);
           }
-          const codigo = item.product?.sku || item.product?.barcode || String(item.product?.id ?? '');
-          const desc = (item.product?.name ?? 'Producto').slice(0, 50);
+          const product = item.product as { sku?: string; barcode?: string; id?: number; name?: string } | null;
+          const codigo = product?.sku ?? product?.barcode ?? String(product?.id ?? '');
+          const desc = String(product?.name ?? 'Producto').slice(0, 50);
           doc.text((codigo || '-').slice(0, 12), 50, y, { width: 55 });
           doc.text(desc, 108, y, { width: 200 });
-          doc.text(String(item.quantity), 310, y, { width: 45, align: 'right' });
-          doc.text(formatMoney(Number(item.unitPrice)), 358, y, { width: 75, align: 'right' });
-          doc.text(formatMoney(Number(item.subtotal)), 436, y, { width: 115, align: 'right' });
+          doc.text(String(Number(item.quantity) || 0), 310, y, { width: 45, align: 'right' });
+          doc.text(formatMoney(this.toNum(item.unitPrice)), 358, y, { width: 75, align: 'right' });
+          doc.text(formatMoney(this.toNum(item.subtotal)), 436, y, { width: 115, align: 'right' });
           y += 22;
         }
 
@@ -539,7 +559,7 @@ export class InvoicesService {
         doc.moveTo(50, y).lineTo(550, y).strokeColor(border).stroke();
         y += 18;
 
-        const subtotalVal = Number(invoice.totalAmount);
+        const subtotalVal = this.toNum(invoice.totalAmount);
         const taxVal = 0;
         const totalVal = subtotalVal + taxVal;
         const tx = 350;
@@ -557,7 +577,12 @@ export class InvoicesService {
         // Pie
         const footerY = 750;
         doc.font('Helvetica').fontSize(9).fillColor(text).text('Gracias por su compra', 50, footerY, { align: 'center', width: 500 });
-        let footer = `Generado ${new Date().toLocaleDateString('es-VE', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
+        let footer = '';
+        try {
+          footer = `Generado ${new Date().toLocaleDateString('es-VE', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
+        } catch {
+          footer = `Generado ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`;
+        }
         if (currencyCode === 'USD' && exchangeRate !== 1) footer += ` · 1 USD = ${exchangeRate.toFixed(2)} Bs.`;
         doc.fontSize(8).fillColor('#9ca3af').text(footer, 50, footerY + 12, { align: 'center', width: 500 });
 
