@@ -30,10 +30,10 @@ apiClient.interceptors.request.use(
         // Priorizar selectedOrganizationId sobre selectedCompanyId
         const selectedOrganizationId = store.selectedOrganizationId || store.selectedCompanyId;
 
-        // Solo agregar el header si hay una organización seleccionada
-        // y no es una ruta pública (auth)
+        // No enviar tenant en rutas públicas ni en el listado de todas las orgs (Super Admin)
         const isPublicRoute = config.url?.includes('/auth/');
-        if (selectedOrganizationId && !isPublicRoute) {
+        const isOrganizationsAll = config.url?.includes('/tenants/organizations-all');
+        if (selectedOrganizationId && !isPublicRoute && !isOrganizationsAll) {
           config.headers['x-tenant-id'] = selectedOrganizationId.toString();
         }
       } catch (error) {

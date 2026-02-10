@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { Grid2x2, ShoppingCart, Box, MoreVertical, Users, FileText, CreditCard, DollarSign, Settings, LogOut } from 'lucide-react';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -22,6 +22,7 @@ import {
 import { cn } from '@/lib/utils';
 import { usePermission } from '@/hooks/usePermission';
 import { useAuthStore } from '@/store/useAuthStore';
+import { apiClient } from '@/lib/api';
 
 const navigationItems = [
   { id: 'dashboard', label: 'Dashboard', icon: Grid2x2, href: '/' },
@@ -49,18 +50,41 @@ export default function BottomNav() {
     selectedOrganizationId,
     selectCompany,
     selectOrganization,
+    setSuperAdminOrganizations,
     getOrganizations,
     getCurrentOrganization,
     clearAuth,
   } = useAuthStore();
 
+  // Super Admin: cargar todas las organizaciones (la auto-selección y reload la hace el Sidebar para evitar doble recarga)
+  useEffect(() => {
+    if (!user?.isSuperAdmin) return;
+    apiClient
+      .get<{ id: number; name: string; slug: string; plan: string; currencyCode?: string; currencySymbol?: string; exchangeRate?: number; rateUpdatedAt?: string | null }[]>('/tenants/organizations-all')
+      .then((res) => {
+        const orgs = (res.data || []).map((o) => ({
+          id: o.id,
+          name: o.name,
+          slug: o.slug,
+          plan: o.plan ?? 'FREE',
+          role: 'SUPER_ADMIN',
+          currencyCode: o.currencyCode ?? 'USD',
+          currencySymbol: o.currencySymbol ?? '$',
+          exchangeRate: o.exchangeRate ?? 1,
+          rateUpdatedAt: o.rateUpdatedAt ?? null,
+        }));
+        setSuperAdminOrganizations(orgs);
+      })
+      .catch(() => {});
+  }, [user?.isSuperAdmin, setSuperAdminOrganizations]);
+
   const organizations = getOrganizations();
   const currentOrg = getCurrentOrganization();
-  const hasMultipleOrganizations = organizations.length > 1;
+  const hasMultipleOrganizations = organizations.length > 1 || (user?.isSuperAdmin === true && organizations.length >= 1);
   const selectedId = selectedOrganizationId || selectedCompanyId;
 
   const handleOrganizationChange = (organizationId: number) => {
-    if (user?.organizations && user.organizations.length > 0) {
+    if (user?.isSuperAdmin || (user?.organizations && user.organizations.length > 0)) {
       selectOrganization(organizationId);
     } else {
       selectCompany(organizationId);

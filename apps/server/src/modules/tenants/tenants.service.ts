@@ -22,6 +22,45 @@ export class TenantsService {
   constructor(private prisma: PrismaService) {}
 
   /**
+   * Devuelve todas las organizaciones. Solo para Super Admin.
+   * Usado en el switcher cuando el usuario es Super Admin para poder cambiar entre cualquier org.
+   */
+  async getAllOrganizationsForSuperAdmin(userId: number) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { isSuperAdmin: true },
+    });
+    if (!user?.isSuperAdmin) {
+      throw new ForbiddenException(
+        'Solo un Super Admin puede listar todas las organizaciones',
+      );
+    }
+    const orgs = await this.prisma.organization.findMany({
+      orderBy: { nombre: 'asc' },
+      select: {
+        id: true,
+        nombre: true,
+        slug: true,
+        plan: true,
+        currencyCode: true,
+        currencySymbol: true,
+        exchangeRate: true,
+        rateUpdatedAt: true,
+      },
+    });
+    return orgs.map((o) => ({
+      id: o.id,
+      name: o.nombre,
+      slug: o.slug,
+      plan: o.plan,
+      currencyCode: o.currencyCode ?? 'USD',
+      currencySymbol: o.currencySymbol ?? '$',
+      exchangeRate: o.exchangeRate ?? 1,
+      rateUpdatedAt: o.rateUpdatedAt ?? null,
+    }));
+  }
+
+  /**
    * Obtiene los datos de la organización actual (incluye exchangeRate).
    */
   async getOrganization(organizationId: number) {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { ChevronLeft, Grid2x2, ShoppingCart, Box, ChevronDown, LogOut, Check, DollarSign, FileText, Users, Settings, Download, CreditCard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/useAuthStore';
+import { apiClient } from '@/lib/api';
 import { usePermission } from '@/hooks/usePermission';
 import { usePWAInstall } from '@/hooks/usePWAInstall';
 import { useExchangeRate } from '@/hooks/useExchangeRate';
@@ -42,9 +43,37 @@ export default function Sidebar() {
     selectedOrganizationId,
     selectCompany,
     selectOrganization,
+    setSuperAdminOrganizations,
     getCurrentOrganization,
     getOrganizations,
   } = useAuthStore();
+
+  // Super Admin: cargar todas las organizaciones y, si no hay org seleccionada, elegir la primera y recargar
+  useEffect(() => {
+    if (!user?.isSuperAdmin) return;
+    apiClient
+      .get<{ id: number; name: string; slug: string; plan: string; currencyCode?: string; currencySymbol?: string; exchangeRate?: number; rateUpdatedAt?: string | null }[]>('/tenants/organizations-all')
+      .then((res) => {
+        const orgs = (res.data || []).map((o) => ({
+          id: o.id,
+          name: o.name,
+          slug: o.slug,
+          plan: o.plan,
+          role: 'SUPER_ADMIN',
+          currencyCode: o.currencyCode ?? 'USD',
+          currencySymbol: o.currencySymbol ?? '$',
+          exchangeRate: o.exchangeRate ?? 1,
+          rateUpdatedAt: o.rateUpdatedAt ?? null,
+        }));
+        setSuperAdminOrganizations(orgs);
+        const currentId = useAuthStore.getState().selectedOrganizationId || useAuthStore.getState().selectedCompanyId;
+        if (orgs.length > 0 && !currentId) {
+          useAuthStore.getState().selectOrganization(orgs[0].id);
+          window.location.href = '/';
+        }
+      })
+      .catch(() => {});
+  }, [user?.isSuperAdmin, setSuperAdminOrganizations]);
   
   // Obtener permisos del usuario actual
   const permissions = usePermission();
@@ -74,9 +103,9 @@ export default function Sidebar() {
     router.push('/login');
   };
 
-  // Manejar cambio de organización: actualiza sesión y fuerza recarga completa para evitar caché/estado mezclado
+  // Cambio de organización: persistir en store/localStorage y recarga total para que todo (dashboard, facturas, etc.) sea de la nueva org
   const handleOrganizationChange = (organizationId: number) => {
-    if (user?.organizations && user.organizations.length > 0) {
+    if (user?.isSuperAdmin || (user?.organizations && user.organizations.length > 0)) {
       selectOrganization(organizationId);
     } else {
       selectCompany(organizationId);
@@ -102,7 +131,7 @@ export default function Sidebar() {
   // Obtener organización/empresa actual y tasa global (reactiva al guardar en Configuración)
   const currentOrg = getCurrentOrganization();
   const organizations = getOrganizations();
-  const hasMultipleOrganizations = organizations.length > 1;
+  const hasMultipleOrganizations = organizations.length > 1 || (user?.isSuperAdmin === true && organizations.length >= 1);
   const displayRate = useExchangeRate();
 
   const organizationName = currentOrg?.name || 'Mi Organización';

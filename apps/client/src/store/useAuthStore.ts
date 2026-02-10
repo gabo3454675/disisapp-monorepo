@@ -38,11 +38,14 @@ interface AuthState {
   isAuthenticated: boolean;
   selectedCompanyId: number | null; // Mantener compatibilidad con "companies"
   selectedOrganizationId: number | null; // Nuevo sistema - preferir organizations
+  /** Lista de todas las orgs (solo Super Admin). Se carga por fetch a /tenants/organizations-all. */
+  superAdminOrganizations: Organization[];
   _hasHydrated: boolean;
   setAuth: (user: User, token: string) => void;
   clearAuth: () => void;
   selectCompany: (companyId: number) => void; // Legacy
   selectOrganization: (organizationId: number) => void; // Nuevo
+  setSuperAdminOrganizations: (orgs: Organization[]) => void;
   setHasHydrated: (state: boolean) => void;
   // Helpers para obtener la organización actual
   getCurrentOrganization: () => Organization | Company | null;
@@ -61,38 +64,14 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       selectedCompanyId: null,
       selectedOrganizationId: null,
+      superAdminOrganizations: [],
       _hasHydrated: false,
       setAuth: (user, token) => {
         if (typeof window !== 'undefined') {
           localStorage.setItem('auth_token', token);
         }
-        
-        // Debug: Ver qué se está guardando
-        console.log('🔍 [useAuthStore] setAuth llamado');
-        console.log('[useAuthStore] User recibido:', user);
-        console.log('[useAuthStore] User.organizations:', user.organizations);
-        console.log('[useAuthStore] User.companies:', user.companies);
-        
-        // Priorizar organizations sobre companies
         const organizations = user.organizations || [];
         const companies = user.companies || [];
-        
-        console.log('[useAuthStore] Organizations array:', organizations);
-        console.log('[useAuthStore] Companies array:', companies);
-        
-        // Seleccionar la primera organización o company disponible
-        const selectedOrgId = organizations.length > 0 
-          ? organizations[0].id 
-          : companies.length > 0 
-            ? companies[0].id 
-            : null;
-        
-        console.log('[useAuthStore] Selected Org ID:', selectedOrgId);
-        console.log('[useAuthStore] First organization:', organizations[0]);
-        if (organizations[0]) {
-          console.log('[useAuthStore] First organization role:', organizations[0].role);
-        }
-        
         set({
           user,
           token,
@@ -100,8 +79,6 @@ export const useAuthStore = create<AuthState>()(
           selectedOrganizationId: organizations.length > 0 ? organizations[0].id : null,
           selectedCompanyId: companies.length > 0 ? companies[0].id : null,
         });
-        
-        console.log('🔍 [useAuthStore] setAuth completado');
       },
       clearAuth: () => {
         if (typeof window !== 'undefined') {
@@ -113,6 +90,7 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: false,
           selectedCompanyId: null,
           selectedOrganizationId: null,
+          superAdminOrganizations: [],
         });
       },
       selectCompany: (companyId: number) => {
@@ -142,13 +120,13 @@ export const useAuthStore = create<AuthState>()(
         }
       },
       selectOrganization: (organizationId: number) => {
-        // Nuevo sistema - preferir organizations
         const state = get();
         const isValidOrganization = state.user?.organizations?.some(
           (o) => o.id === organizationId
         );
+        const isSuperAdmin = state.user?.isSuperAdmin === true;
         
-        if (isValidOrganization) {
+        if (isValidOrganization || isSuperAdmin) {
           set({ selectedOrganizationId: organizationId });
           // Persistir inmediatamente en localStorage para que el interceptor lo lea
           if (typeof window !== 'undefined') {
@@ -168,51 +146,36 @@ export const useAuthStore = create<AuthState>()(
           console.warn(`Organización con ID ${organizationId} no encontrada`);
         }
       },
+      setSuperAdminOrganizations: (orgs: Organization[]) => {
+        set({ superAdminOrganizations: orgs });
+      },
       setHasHydrated: (state: boolean) => {
         set({ _hasHydrated: state });
       },
       // Helper para obtener la organización actual (prioriza organizations)
       getCurrentOrganization: () => {
         const state = get();
-        
-        // Debug
-        if (typeof window !== 'undefined') {
-          console.log('🔍 [getCurrentOrganization] Llamado');
-          console.log('[getCurrentOrganization] Selected Org ID:', state.selectedOrganizationId);
-          console.log('[getCurrentOrganization] Selected Company ID:', state.selectedCompanyId);
-          console.log('[getCurrentOrganization] User:', state.user);
-          console.log('[getCurrentOrganization] User Organizations:', state.user?.organizations);
+        const selectedId = state.selectedOrganizationId || state.selectedCompanyId;
+        if (state.user?.isSuperAdmin && state.superAdminOrganizations.length > 0 && selectedId) {
+          const found = state.superAdminOrganizations.find((o) => o.id === selectedId);
+          if (found) return found;
         }
-        
-        // Priorizar organizations sobre companies
-        if (state.selectedOrganizationId && state.user?.organizations) {
-          const found = state.user.organizations.find(
-            (o) => o.id === state.selectedOrganizationId
-          );
-          if (typeof window !== 'undefined') {
-            console.log('[getCurrentOrganization] Found org:', found);
-          }
+        if (selectedId && state.user?.organizations) {
+          const found = state.user.organizations.find((o) => o.id === selectedId);
           return found || null;
         }
-        
         if (state.selectedCompanyId && state.user?.companies) {
           const found = state.user.companies.find(
             (c) => c.id === state.selectedCompanyId
           );
-          if (typeof window !== 'undefined') {
-            console.log('[getCurrentOrganization] Found company:', found);
-          }
           return found || null;
-        }
-        
-        if (typeof window !== 'undefined') {
-          console.warn('[getCurrentOrganization] ⚠️ No se encontró organización');
         }
         return null;
       },
-      // Helper para verificar si el usuario tiene organizaciones
+      // Helper para verificar si el usuario tiene organizaciones (Super Admin cuenta como "tiene" para exigir selección)
       hasOrganizations: () => {
         const state = get();
+        if (state.user?.isSuperAdmin) return true;
         const orgs = state.user?.organizations || [];
         const companies = state.user?.companies || [];
         return orgs.length > 0 || companies.length > 0;
@@ -220,6 +183,10 @@ export const useAuthStore = create<AuthState>()(
       // Helper para obtener todas las organizaciones
       getOrganizations: () => {
         const state = get();
+        // Super Admin: usar lista de todas las orgs si está cargada
+        if (state.user?.isSuperAdmin && state.superAdminOrganizations.length > 0) {
+          return state.superAdminOrganizations;
+        }
         // Priorizar organizations, pero incluir companies como fallback
         if (state.user?.organizations && state.user.organizations.length > 0) {
           return state.user.organizations;

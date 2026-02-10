@@ -35,6 +35,15 @@ export class TenantsController {
   }
 
   /**
+   * Lista todas las organizaciones. Solo Super Admin.
+   * Usado en el switcher para cambiar entre cualquier org sin necesidad de ser miembro.
+   */
+  @Get('organizations-all')
+  async getAllOrganizationsForSuperAdmin(@ActiveUser() user: { id: number }) {
+    return this.tenantsService.getAllOrganizationsForSuperAdmin(user.id);
+  }
+
+  /**
    * Obtiene la organización actual (incluye exchangeRate).
    */
   @Get('organization')

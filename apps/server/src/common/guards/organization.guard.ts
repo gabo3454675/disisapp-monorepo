@@ -51,7 +51,7 @@ export class OrganizationGuard implements CanActivate {
     }
 
     // Verificar que el usuario es miembro activo de esta organización
-    const membership = await this.prisma.member.findFirst({
+    let membership = await this.prisma.member.findFirst({
       where: {
         userId: user.id,
         organizationId: organizationId,
@@ -62,10 +62,27 @@ export class OrganizationGuard implements CanActivate {
       },
     });
 
+    // Super Admin puede acceder a cualquier organización aunque no sea miembro
     if (!membership) {
-      throw new ForbiddenException(
-        'No tienes acceso a esta organización o tu membresía está inactiva',
-      );
+      const dbUser = await this.prisma.user.findUnique({
+        where: { id: user.id },
+        select: { isSuperAdmin: true },
+      });
+      if (dbUser?.isSuperAdmin) {
+        membership = {
+          id: 0,
+          userId: user.id,
+          organizationId,
+          role: 'SUPER_ADMIN',
+          status: 'ACTIVE',
+          joinedAt: new Date(),
+          organization,
+        } as any;
+      } else {
+        throw new ForbiddenException(
+          'No tienes acceso a esta organización o tu membresía está inactiva',
+        );
+      }
     }
 
     // Inyectar información en el request para uso en controladores
