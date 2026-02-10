@@ -426,7 +426,6 @@ export class TenantsService {
       data: { status: 'SUSPENDED' },
     });
 
-    const targetUserId = membership.userId;
     const [activeMembers, activeCompanyMembers] = await Promise.all([
       this.prisma.member.count({ where: { userId: targetUserId, status: 'ACTIVE' } }),
       this.prisma.companyMember.count({ where: { userId: targetUserId, status: 'ACTIVE' } }),
