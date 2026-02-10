@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -78,6 +79,7 @@ function getAuditActionLabel(action: string): string {
 }
 
 export default function TeamPage() {
+  const router = useRouter();
   const { user, selectedOrganizationId, selectedCompanyId, getCurrentOrganization, setOrganizationConfig } = useAuthStore();
   const { canManageTeam, isSuperAdmin, isAdmin } = usePermission();
   const currentUserId = user?.id ?? 0;
@@ -233,6 +235,7 @@ export default function TeamPage() {
 
       handleCloseInviteDialog();
       await fetchMembers();
+      router.refresh();
 
       if (data.isNewUser && data.tempPassword) {
         setTempPasswordModal({
@@ -292,6 +295,7 @@ export default function TeamPage() {
       handleCloseInviteDialog();
       setIsLinkDialogOpen(true);
       await fetchMembers();
+      router.refresh();
       toast.success('Invitación enviada', {
         description: 'Cuando el usuario acepte el enlace, aparecerá en la lista de miembros.',
       });
@@ -380,6 +384,7 @@ export default function TeamPage() {
       setMembers((prev) =>
         prev.map((m) => (m.id === member.id ? { ...m, role: newRole } : m))
       );
+      router.refresh();
       toast.success('Rol actualizado', {
         description: `${member.fullName || member.email} ahora es ${getRoleLabel(newRole)}.`,
       });
@@ -412,6 +417,7 @@ export default function TeamPage() {
       await apiClient.delete(`/tenants/organization/members/${confirmDeactivate.id}`);
       setMembers((prev) => prev.filter((m) => m.id !== confirmDeactivate.id));
       setConfirmDeactivate(null);
+      router.refresh();
       toast.success('Usuario eliminado', {
         description: `${name} ya no tiene acceso a la organización. Sus facturas se mantienen.`,
       });

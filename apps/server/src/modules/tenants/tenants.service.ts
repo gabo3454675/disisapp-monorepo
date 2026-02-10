@@ -132,6 +132,7 @@ export class TenantsService {
       where: {
         organizationId,
         status: 'ACTIVE',
+        user: { isActive: true },
         ...(role === ROLES.MANAGER
           ? { role: { in: ['SELLER', 'WAREHOUSE'] } }
           : {}),
@@ -288,6 +289,18 @@ export class TenantsService {
       data: { status: 'SUSPENDED' },
     });
 
+    const targetUserId = membership.userId;
+    const [activeMembers, activeCompanyMembers] = await Promise.all([
+      this.prisma.member.count({ where: { userId: targetUserId, status: 'ACTIVE' } }),
+      this.prisma.companyMember.count({ where: { userId: targetUserId, status: 'ACTIVE' } }),
+    ]);
+    if (activeMembers === 0 && activeCompanyMembers === 0) {
+      await this.prisma.user.update({
+        where: { id: targetUserId },
+        data: { isActive: false },
+      });
+    }
+
     const actor = await this.prisma.user.findUnique({
       where: { id: requesterUserId },
       select: { email: true },
@@ -373,6 +386,18 @@ export class TenantsService {
       where: { id: membership.id },
       data: { status: 'SUSPENDED' },
     });
+
+    const targetUserId = membership.userId;
+    const [activeMembers, activeCompanyMembers] = await Promise.all([
+      this.prisma.member.count({ where: { userId: targetUserId, status: 'ACTIVE' } }),
+      this.prisma.companyMember.count({ where: { userId: targetUserId, status: 'ACTIVE' } }),
+    ]);
+    if (activeMembers === 0 && activeCompanyMembers === 0) {
+      await this.prisma.user.update({
+        where: { id: targetUserId },
+        data: { isActive: false },
+      });
+    }
 
     const actor = await this.prisma.user.findUnique({
       where: { id: requesterUserId },
@@ -480,5 +505,47 @@ export class TenantsService {
     });
 
     return organization;
+  }
+
+  /**
+   * Purga usuarios desactivados hace más de 6 meses sin facturas ni tareas vinculadas.
+   * Solo SUPER_ADMIN. Devuelve cuántos se eliminaron.
+   */
+  async purgeInactiveUsers(actorUserId: number): Promise<{ purged: number }> {
+    const actor = await this.prisma.user.findUnique({
+      where: { id: actorUserId },
+      select: { isSuperAdmin: true },
+    });
+    if (!actor?.isSuperAdmin) {
+      throw new ForbiddenException('Solo el Super Admin puede ejecutar la purga');
+    }
+
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+    const candidates = await this.prisma.user.findMany({
+      where: {
+        isActive: false,
+        updatedAt: { lt: sixMonthsAgo },
+        isSuperAdmin: false,
+      },
+      select: { id: true },
+    });
+
+    let purged = 0;
+    for (const u of candidates) {
+      const [invCount, taskCount] = await Promise.all([
+        this.prisma.invoice.count({ where: { sellerId: u.id } }),
+        this.prisma.task.count({ where: { OR: [{ assignedToId: u.id }, { createdById: u.id }] } }),
+      ]);
+      if (invCount === 0 && taskCount === 0) {
+        await this.prisma.member.deleteMany({ where: { userId: u.id } });
+        await this.prisma.companyMember.deleteMany({ where: { userId: u.id } });
+        await this.prisma.user.delete({ where: { id: u.id } });
+        purged++;
+      }
+    }
+
+    return { purged };
   }
 }

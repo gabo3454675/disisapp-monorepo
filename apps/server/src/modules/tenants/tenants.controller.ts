@@ -71,6 +71,16 @@ export class TenantsController {
     return this.tenantsService.getAuditLog(organizationId, limitNum);
   }
 
+  /**
+   * Purga usuarios desactivados >6 meses sin facturas ni tareas. Solo SUPER_ADMIN.
+   */
+  @Post('purge-inactive-users')
+  @UseGuards(OrganizationGuard, RolesGuard)
+  @Roles('SUPER_ADMIN')
+  async purgeInactiveUsers(@ActiveUser() user: { id: number }) {
+    return this.tenantsService.purgeInactiveUsers(user.id);
+  }
+
   @Post()
   async createOrganization(
     @Body() createOrganizationDto: CreateOrganizationDto,

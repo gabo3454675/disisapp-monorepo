@@ -32,6 +32,10 @@ export class AuthService {
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
+    if (user.isActive === false) {
+      throw new UnauthorizedException('Cuenta desactivada. Contacte al administrador.');
+    }
+
     // Obtener las organizaciones a las que pertenece el usuario (Member)
     const organizationMemberships = await this.prisma.member.findMany({
       where: {

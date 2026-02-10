@@ -74,20 +74,15 @@ export default function Sidebar() {
     router.push('/login');
   };
 
-  // Manejar cambio de organización
+  // Manejar cambio de organización: actualiza sesión y fuerza recarga completa para evitar caché/estado mezclado
   const handleOrganizationChange = (organizationId: number) => {
-    // Priorizar selectOrganization sobre selectCompany
     if (user?.organizations && user.organizations.length > 0) {
       selectOrganization(organizationId);
     } else {
       selectCompany(organizationId);
     }
-    
-    // Disparar evento para que otros componentes puedan reaccionar
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('organization-changed', { 
-        detail: { organizationId } 
-      }));
+      window.location.href = '/';
     }
   };
 

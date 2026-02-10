@@ -18,6 +18,7 @@ model User {
   fullName      String?
   avatarUrl     String?
   isSuperAdmin  Boolean         @default(false) // Solo el Super Admin puede crear organizaciones
+  isActive      Boolean         @default(true)  // Cuenta desactivada = no puede iniciar sesión
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
