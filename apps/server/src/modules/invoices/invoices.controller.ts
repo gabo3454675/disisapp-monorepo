@@ -71,7 +71,7 @@ export class InvoicesController {
 
   @Get(':id/pdf')
   @Header('Content-Type', 'application/pdf')
-  @Header('Content-Disposition', 'attachment; filename="factura.pdf"')
+  @Header('Content-Disposition', 'inline; filename="factura.pdf"')
   async getPDF(
     @Param('id', ParseIntPipe) id: number,
     @ActiveOrganization() organizationId: number,
@@ -81,8 +81,8 @@ export class InvoicesController {
       const pdfBuffer = await this.invoicesService.generatePDF(id, organizationId);
       res.set({
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="factura-${id}.pdf"`,
-        'Content-Length': pdfBuffer.length,
+        'Content-Disposition': `inline; filename="factura-${id}.pdf"`,
+        'Content-Length': String(pdfBuffer.length),
       });
       res.send(pdfBuffer);
     } catch (err: any) {

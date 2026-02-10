@@ -437,294 +437,135 @@ export class InvoicesService {
     return updatedInvoice;
   }
 
+  /**
+   * Genera el PDF de la factura en memoria (Buffer). Usa PDFKit - sin Puppeteer/Chromium.
+   * Compatible con AWS: no escribe archivos en disco, solo fuentes estándar (Helvetica).
+   * Usa moneda y tasa de la organización del tenant.
+   */
   async generatePDF(id: number, organizationId: number): Promise<Buffer> {
     const invoice = await this.findOne(id, organizationId);
     const orgId = invoice.organizationId ?? organizationId;
     const org = await this.prisma.organization.findUnique({
       where: { id: orgId },
-      select: { exchangeRate: true, currencyCode: true, currencySymbol: true },
+      select: { nombre: true, exchangeRate: true, currencyCode: true, currencySymbol: true },
     });
     const currencySymbol = org?.currencySymbol ?? '$';
     const currencyCode = org?.currencyCode ?? 'USD';
     const exchangeRate = Number(org?.exchangeRate ?? 1);
+    const orgName = org?.nombre ?? invoice.company?.name ?? 'Organización';
 
     const formatMoney = (value: number) => `${currencySymbol} ${value.toFixed(2)}`;
 
     return new Promise((resolve, reject) => {
-      const doc = new PDFDocument({ margin: 50 });
+      const doc = new PDFDocument({ margin: 50, size: 'A4' });
       const buffers: Buffer[] = [];
 
       doc.on('data', (chunk: Buffer) => buffers.push(chunk));
       doc.on('end', () => {
         try {
-          const pdfBuffer = Buffer.concat(buffers);
-          resolve(pdfBuffer);
+          resolve(Buffer.concat(buffers));
         } catch (e) {
           reject(e);
         }
       });
       doc.on('error', (err) => {
-        if (typeof (doc as any).destroy === 'function') (doc as any).destroy();
+        try {
+          (doc as any).destroy?.();
+        } catch (_) {}
         reject(err);
       });
 
       try {
-      // Configuración de colores
-      const primaryColor = '#1e40af';
-      const textColor = '#1f2937';
-      const borderColor = '#e5e7eb';
+        doc.font('Helvetica');
+        const primary = '#1e40af';
+        const text = '#1f2937';
+        const border = '#e5e7eb';
 
-      // Logo de la organización (arriba izquierda)
-      let logoY = 50;
-      const logoSize = 60;
-      const logoX = 50;
-      let logoLoaded = false;
+        // Header: disis + organización
+        doc.fontSize(20).fillColor(primary).text('disis', 50, 50);
+        doc.fontSize(10).fillColor(text).text(orgName, 50, 72);
+        if (invoice.company?.taxId) doc.text(`RIF: ${invoice.company.taxId}`, 50, 85);
+        if (invoice.company?.address) doc.text(invoice.company.address, 50, 98);
 
-      if (invoice.company.logoUrl) {
-        try {
-          const fs = require('fs');
-          const path = require('path');
-          let imagePath: string | null = null;
+        // Factura (derecha)
+        doc.fontSize(16).fillColor(primary).text('FACTURA', 350, 50, { align: 'right' });
+        doc.fontSize(10).fillColor(text)
+          .text(`#${invoice.id}`, 500, 72, { align: 'right' })
+          .text(new Date(invoice.createdAt).toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' }), 500, 85, { align: 'right' });
 
-          // Determinar la ruta del archivo según el tipo de URL
-          if (invoice.company.logoUrl.startsWith('http')) {
-            // URL remota (S3 u otro servicio)
-            // PDFKit puede cargar desde URL directamente
-            imagePath = invoice.company.logoUrl;
-          } else if (invoice.company.logoUrl.includes('/uploads/')) {
-            // URL local que contiene /uploads/
-            const logoPath = invoice.company.logoUrl.split('/uploads/')[1];
-            const fullPath = path.join(process.cwd(), 'uploads', logoPath);
-            if (fs.existsSync(fullPath)) {
-              imagePath = fullPath;
-            }
+        // Separador
+        const sepY = 115;
+        doc.moveTo(50, sepY).lineTo(550, sepY).strokeColor(border).lineWidth(1).stroke();
+
+        // Cliente
+        const clientY = sepY + 15;
+        doc.fontSize(11).fillColor(primary).text('CLIENTE', 50, clientY);
+        const customerName = invoice.customer?.name ?? 'Cliente General';
+        const customerDoc = invoice.customer?.taxId ?? 'N/A';
+        doc.fontSize(10).fillColor(text)
+          .text(`Nombre: ${customerName}`, 50, clientY + 14)
+          .text(`Documento: ${customerDoc}`, 50, clientY + 28);
+
+        // Tabla: Código | Descripción | Cant. | P. Unit. | Total
+        const tableTop = clientY + 55;
+        let y = tableTop;
+        doc.fontSize(9).fillColor(primary);
+        doc.text('Código', 50, y, { width: 55 });
+        doc.text('Descripción', 108, y, { width: 200 });
+        doc.text('Cant.', 310, y, { width: 45, align: 'right' });
+        doc.text('P. Unit.', 358, y, { width: 75, align: 'right' });
+        doc.text('Total', 436, y, { width: 115, align: 'right' });
+        y += 12;
+        doc.moveTo(50, y).lineTo(550, y).strokeColor(border).stroke();
+        y += 10;
+
+        for (const item of invoice.items) {
+          if (y > 700) {
+            doc.addPage();
+            y = 50;
+            doc.font('Helvetica').fontSize(9).fillColor(text);
           }
-
-          // Intentar cargar la imagen
-          if (imagePath) {
-            doc.image(imagePath, logoX, logoY, {
-              width: logoSize,
-              height: logoSize,
-              fit: [logoSize, logoSize],
-            });
-            logoLoaded = true;
-          }
-        } catch (error) {
-          // Si falla la carga del logo, continuar sin él
-          console.warn('No se pudo cargar el logo:', error.message);
-        }
-      }
-
-      // Nombre de la empresa (a la derecha del logo si existe, o solo texto)
-      const companyNameX = logoLoaded ? logoX + logoSize + 15 : logoX;
-      const companyInfoY = logoY;
-      
-      doc
-        .fontSize(24)
-        .fillColor(primaryColor)
-        .text(invoice.company.name || 'Mi Empresa', companyNameX, companyInfoY, { align: 'left' });
-
-      let infoY = companyInfoY + 30;
-      if (invoice.company.taxId) {
-        doc
-          .fontSize(10)
-          .fillColor(textColor)
-          .text(`RIF: ${invoice.company.taxId}`, companyNameX, infoY);
-        infoY += 15;
-      }
-
-      if (invoice.company.address) {
-        doc
-          .fontSize(10)
-          .fillColor(textColor)
-          .text(invoice.company.address, companyNameX, infoY);
-        infoY += 15;
-      }
-
-      // Título Factura (arriba derecha)
-      const invoiceTitleY = logoLoaded ? logoY + 10 : logoY;
-      doc
-        .fontSize(18)
-        .fillColor(primaryColor)
-        .text('FACTURA', 400, invoiceTitleY, { align: 'right' });
-
-      doc
-        .fontSize(10)
-        .fillColor(textColor)
-        .text(`Factura #${invoice.id}`, 400, invoiceTitleY + 25, { align: 'right' });
-
-      doc
-        .fontSize(10)
-        .fillColor(textColor)
-        .text(
-          `Fecha: ${new Date(invoice.createdAt).toLocaleDateString('es-VE', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-          })}`,
-          400,
-          invoiceTitleY + 40,
-          { align: 'right' },
-        );
-
-      // Línea separadora (ajustar según altura del logo)
-      const separatorY = Math.max(logoY + logoSize + 20, infoY + 10);
-      doc
-        .moveTo(50, separatorY)
-        .lineTo(550, separatorY)
-        .strokeColor(borderColor)
-        .lineWidth(1)
-        .stroke();
-
-      // Datos del Cliente (después de la línea separadora)
-      const clientY = separatorY + 20;
-      doc
-        .fontSize(12)
-        .fillColor(primaryColor)
-        .text('DATOS DEL CLIENTE', 50, clientY);
-
-      const customerName = invoice.customer?.name || 'Cliente General';
-      const customerTaxId = invoice.customer?.taxId || 'N/A';
-      const customerAddress = invoice.customer?.address || 'N/A';
-
-      doc
-        .fontSize(10)
-        .fillColor(textColor)
-        .text(`Nombre: ${customerName}`, 50, clientY + 20);
-
-      doc
-        .fontSize(10)
-        .fillColor(textColor)
-        .text(`Documento: ${customerTaxId}`, 50, clientY + 35);
-
-      doc
-        .fontSize(10)
-        .fillColor(textColor)
-        .text(`Dirección: ${customerAddress}`, 50, clientY + 50);
-
-      // Tabla de Items
-      const tableTop = clientY + 90;
-      const itemHeight = 25;
-      let currentY = tableTop;
-
-      // Encabezado de tabla
-      doc
-        .fontSize(10)
-        .fillColor(primaryColor)
-        .text('Cant.', 50, currentY, { width: 60, align: 'left' })
-        .text('Descripción', 110, currentY, { width: 250, align: 'left' })
-        .text('P. Unit.', 360, currentY, { width: 80, align: 'right' })
-        .text('Total', 440, currentY, { width: 110, align: 'right' });
-
-      currentY += 15;
-      doc
-        .moveTo(50, currentY)
-        .lineTo(550, currentY)
-        .strokeColor(borderColor)
-        .lineWidth(1)
-        .stroke();
-
-      currentY += 10;
-
-      // Items
-      invoice.items.forEach((item) => {
-        if (currentY > 700) {
-          doc.addPage();
-          currentY = 50;
+          const codigo = item.product?.sku || item.product?.barcode || String(item.product?.id ?? '');
+          const desc = (item.product?.name ?? 'Producto').slice(0, 50);
+          doc.text((codigo || '-').slice(0, 12), 50, y, { width: 55 });
+          doc.text(desc, 108, y, { width: 200 });
+          doc.text(String(item.quantity), 310, y, { width: 45, align: 'right' });
+          doc.text(formatMoney(Number(item.unitPrice)), 358, y, { width: 75, align: 'right' });
+          doc.text(formatMoney(Number(item.subtotal)), 436, y, { width: 115, align: 'right' });
+          y += 22;
         }
 
-        const productName = item.product.name;
-        const quantity = item.quantity.toString();
-        const unitPrice = formatMoney(Number(item.unitPrice));
-        const subtotal = formatMoney(Number(item.subtotal));
+        y += 5;
+        doc.moveTo(50, y).lineTo(550, y).strokeColor(border).stroke();
+        y += 18;
 
-        doc
-          .fontSize(9)
-          .fillColor(textColor)
-          .text(quantity, 50, currentY, { width: 60, align: 'left' })
-          .text(productName, 110, currentY, { width: 250, align: 'left' })
-          .text(unitPrice, 360, currentY, { width: 80, align: 'right' })
-          .text(subtotal, 440, currentY, { width: 110, align: 'right' });
+        const subtotalVal = Number(invoice.totalAmount);
+        const taxVal = 0;
+        const totalVal = subtotalVal + taxVal;
+        const tx = 350;
 
-        currentY += itemHeight;
-      });
+        doc.fontSize(10).fillColor(text);
+        doc.text('Subtotal:', tx, y, { width: 90, align: 'right' }).text(formatMoney(subtotalVal), 440, y, { width: 110, align: 'right' });
+        y += 14;
+        doc.text('Impuestos:', tx, y, { width: 90, align: 'right' }).text(formatMoney(taxVal), 440, y, { width: 110, align: 'right' });
+        y += 20;
+        doc.moveTo(tx, y).lineTo(550, y).strokeColor(primary).lineWidth(1.5).stroke();
+        y += 10;
+        doc.fontSize(12).font('Helvetica-Bold').fillColor(primary);
+        doc.text('TOTAL:', tx, y, { width: 90, align: 'right' }).text(formatMoney(totalVal), 440, y, { width: 110, align: 'right' });
 
-      // Línea final de tabla
-      doc
-        .moveTo(50, currentY)
-        .lineTo(550, currentY)
-        .strokeColor(borderColor)
-        .lineWidth(1)
-        .stroke();
+        // Pie
+        const footerY = 750;
+        doc.font('Helvetica').fontSize(9).fillColor(text).text('Gracias por su compra', 50, footerY, { align: 'center', width: 500 });
+        let footer = `Generado ${new Date().toLocaleDateString('es-VE', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
+        if (currencyCode === 'USD' && exchangeRate !== 1) footer += ` · 1 USD = ${exchangeRate.toFixed(2)} Bs.`;
+        doc.fontSize(8).fillColor('#9ca3af').text(footer, 50, footerY + 12, { align: 'center', width: 500 });
 
-      currentY += 20;
-
-      // Totales (moneda del tenant)
-      const subtotalVal = Number(invoice.totalAmount);
-      const tax = 0; // IVA/IGTF según tenant si se almacenan en factura en el futuro
-      const totalVal = subtotalVal + tax;
-
-      const totalsX = 350;
-
-      doc
-        .fontSize(10)
-        .fillColor(textColor)
-        .text('Subtotal:', totalsX, currentY, { width: 100, align: 'right' })
-        .text(formatMoney(subtotalVal), 450, currentY, { width: 100, align: 'right' });
-
-      currentY += 15;
-
-      doc
-        .fontSize(10)
-        .fillColor(textColor)
-        .text('Impuestos:', totalsX, currentY, { width: 100, align: 'right' })
-        .text(formatMoney(tax), 450, currentY, { width: 100, align: 'right' });
-
-      currentY += 20;
-
-      // Total en grande
-      doc
-        .moveTo(totalsX, currentY)
-        .lineTo(550, currentY)
-        .strokeColor(primaryColor)
-        .lineWidth(2)
-        .stroke();
-
-      currentY += 10;
-
-      doc
-        .fontSize(14)
-        .fillColor(primaryColor)
-        .font('Helvetica-Bold')
-        .text('TOTAL:', totalsX, currentY, { width: 100, align: 'right' })
-        .text(formatMoney(totalVal), 450, currentY, { width: 100, align: 'right' });
-
-      // Pie de página (incluye tasa del tenant si aplica)
-      const footerY = 750;
-      doc
-        .fontSize(10)
-        .fillColor(textColor)
-        .font('Helvetica')
-        .text('Gracias por su compra', 50, footerY, { align: 'center', width: 500 });
-
-      let footerText = `Generado el ${new Date().toLocaleDateString('es-VE', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      })}`;
-      if (currencyCode === 'USD' && exchangeRate !== 1) {
-        footerText += ` · Tasa: 1 USD = ${exchangeRate.toFixed(2)} Bs.`;
-      }
-      doc
-        .fontSize(8)
-        .fillColor('#9ca3af')
-        .text(footerText, 50, footerY + 15, { align: 'center', width: 500 });
-
-      doc.end();
+        doc.end();
       } catch (err) {
-        if (typeof (doc as any).destroy === 'function') (doc as any).destroy();
+        try {
+          (doc as any).destroy?.();
+        } catch (_) {}
         reject(err instanceof Error ? err : new Error(String(err)));
       }
     });
