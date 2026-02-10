@@ -8,10 +8,10 @@ import { PrismaService } from '@/common/prisma/prisma.service';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { getCompanyIdFromOrganization } from '@/common/helpers/organization.helper';
 import { v4 as uuidv4 } from 'uuid';
-
-// require() evita "default is not a constructor" en producción (CommonJS)
-const PDFDocument = require('pdfkit');
+import * as PDFKit from 'pdfkit';
 import { CreditsService } from '@/modules/credits/credits.service';
+
+const PDFDocument = (PDFKit as any).default ?? PDFKit;
 import { TasksService } from '@/modules/tasks/tasks.service';
 import { TaskPriority } from '@prisma/client';
 import { PaymentStatus } from '@prisma/client';
