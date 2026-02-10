@@ -21,6 +21,8 @@ export interface Organization {
   exchangeRate?: number;
   /** ISO date string; última actualización de la tasa (para tarea "Actualizar Tasa del Día") */
   rateUpdatedAt?: string | null;
+  /** Email de quien actualizó la tasa por última vez (toda la org ve lo mismo) */
+  rateUpdatedBy?: string | null;
 }
 
 interface User {
@@ -53,7 +55,7 @@ interface AuthState {
   getOrganizations: () => Organization[];
   setOrganizationExchangeRate: (organizationId: number, exchangeRate: number, rateUpdatedAt?: string | null) => void;
   /** Actualiza la configuración de moneda/tasa de la organización en el store (tras guardar en backend). */
-  setOrganizationConfig: (organizationId: number, config: { exchangeRate?: number; rateUpdatedAt?: string | null; currencyCode?: string; currencySymbol?: string }) => void;
+  setOrganizationConfig: (organizationId: number, config: { exchangeRate?: number; rateUpdatedAt?: string | null; rateUpdatedBy?: string | null; currencyCode?: string; currencySymbol?: string }) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -212,14 +214,15 @@ export const useAuthStore = create<AuthState>()(
         );
         set({ user: state.user ? { ...state.user, organizations: updated } : null });
       },
-      setOrganizationConfig: (organizationId: number, config: { exchangeRate?: number; rateUpdatedAt?: string | null; currencyCode?: string; currencySymbol?: string }) => {
+      setOrganizationConfig: (organizationId: number, config: { exchangeRate?: number; rateUpdatedAt?: string | null; rateUpdatedBy?: string | null; currencyCode?: string; currencySymbol?: string }) => {
         const state = get();
-        const orgs = state.user?.organizations;
-        if (!orgs) return;
-        const updated = orgs.map((o) =>
-          o.id === organizationId ? { ...o, ...config } : o
-        );
-        set({ user: state.user ? { ...state.user, organizations: updated } : null });
+        const patch = (o: { id: number }) => (o.id === organizationId ? { ...o, ...config } : o);
+        if (state.user?.organizations?.length) {
+          set({ user: { ...state.user, organizations: state.user.organizations.map(patch) } });
+        }
+        if (state.superAdminOrganizations?.length) {
+          set({ superAdminOrganizations: state.superAdminOrganizations.map(patch) });
+        }
       },
     }),
     {

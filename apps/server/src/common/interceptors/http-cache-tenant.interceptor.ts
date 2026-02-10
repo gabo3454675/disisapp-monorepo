@@ -26,7 +26,10 @@ export class HttpCacheTenantInterceptor extends CacheInterceptor {
     if (!httpAdapter || typeof httpAdapter.getRequestUrl !== 'function') {
       return undefined;
     }
-    const baseUrl = httpAdapter.getRequestUrl(request);
+    let baseUrl = httpAdapter.getRequestUrl(request);
+    if (typeof baseUrl === 'string' && baseUrl.includes('/tenants/organization') && !baseUrl.includes('organizations-all')) {
+      return undefined;
+    }
     const tenantId =
       request.headers['x-tenant-id'] ?? request.activeOrganizationId;
     if (tenantId !== undefined && tenantId !== null && String(tenantId).trim() !== '') {

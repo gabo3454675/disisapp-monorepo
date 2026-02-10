@@ -61,7 +61,8 @@ export class TenantsService {
   }
 
   /**
-   * Obtiene los datos de la organización actual (incluye exchangeRate).
+   * Obtiene los datos de la organización actual (incluye exchangeRate y quién actualizó la tasa).
+   * La tasa es única por organización: todos los usuarios ven la misma y se sincroniza desde aquí.
    */
   async getOrganization(organizationId: number) {
     const org = await this.prisma.organization.findUnique({
@@ -80,6 +81,11 @@ export class TenantsService {
     if (!org) {
       throw new NotFoundException('Organización no encontrada');
     }
+    const lastRateUpdate = await this.prisma.auditLog.findFirst({
+      where: { organizationId, action: 'EXCHANGE_RATE_UPDATE' },
+      orderBy: { createdAt: 'desc' },
+      select: { actorEmail: true },
+    });
     return {
       id: org.id,
       name: org.nombre,
@@ -89,6 +95,7 @@ export class TenantsService {
       currencySymbol: org.currencySymbol ?? '$',
       exchangeRate: org.exchangeRate ?? 1,
       rateUpdatedAt: org.rateUpdatedAt ?? null,
+      rateUpdatedBy: lastRateUpdate?.actorEmail ?? null,
     };
   }
 

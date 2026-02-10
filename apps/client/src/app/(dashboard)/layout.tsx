@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/useAuthStore';
+import { apiClient } from '@/lib/api';
 import Sidebar from '@/components/sidebar';
 import BottomNav from '@/components/bottom-nav';
 import { ExchangeRateIndicator } from '@/components/exchange-rate-indicator';
@@ -34,6 +35,42 @@ export default function DashboardLayout({
 
   // Sincronizar facturas pendientes al volver online
   useSync();
+
+  // Sincronizar tasa de cambio desde el servidor: todos ven la misma tasa por organización
+  const syncOrganizationRate = useCallback(() => {
+    const id = useAuthStore.getState().selectedOrganizationId || useAuthStore.getState().selectedCompanyId;
+    if (!id) return;
+    apiClient
+      .get<{ exchangeRate?: number; rateUpdatedAt?: string | null; rateUpdatedBy?: string | null; currencyCode?: string; currencySymbol?: string }>('/tenants/organization')
+      .then((res) => {
+        const d = res.data;
+        useAuthStore.getState().setOrganizationConfig(id, {
+          exchangeRate: d.exchangeRate,
+          rateUpdatedAt: d.rateUpdatedAt ?? undefined,
+          rateUpdatedBy: d.rateUpdatedBy ?? undefined,
+          currencyCode: d.currencyCode,
+          currencySymbol: d.currencySymbol,
+        });
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!mounted || !hasHydrated || !isAuthenticated || !selectedId) return;
+    syncOrganizationRate();
+  }, [mounted, hasHydrated, isAuthenticated, selectedId, syncOrganizationRate]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !selectedId) return;
+    const onSync = () => syncOrganizationRate();
+    const onVisibility = () => { if (document.visibilityState === 'visible') onSync(); };
+    window.addEventListener('focus', onSync);
+    window.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('focus', onSync);
+      window.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [isAuthenticated, selectedId, syncOrganizationRate]);
 
   // Asegurar que solo renderizamos en el cliente
   useEffect(() => {

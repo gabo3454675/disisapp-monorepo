@@ -176,18 +176,19 @@ export default function TeamPage() {
       const payload: { exchangeRate: number; currencyCode?: string; currencySymbol?: string } = { exchangeRate: num };
       if (currencyCode?.trim()) payload.currencyCode = currencyCode.trim();
       if (currencySymbol?.trim()) payload.currencySymbol = currencySymbol.trim();
-      const { data } = await apiClient.patch<{ exchangeRate: number; rateUpdatedAt?: string | null; currencyCode?: string; currencySymbol?: string }>('/tenants/organization', payload);
+      const { data } = await apiClient.patch<{ exchangeRate: number; rateUpdatedAt?: string | null; rateUpdatedBy?: string | null; currencyCode?: string; currencySymbol?: string }>('/tenants/organization', payload);
       setOrganizationConfig(organizationId, {
         exchangeRate: data.exchangeRate,
         rateUpdatedAt: data.rateUpdatedAt ?? undefined,
+        rateUpdatedBy: data.rateUpdatedBy ?? undefined,
         currencyCode: data.currencyCode,
         currencySymbol: data.currencySymbol,
       });
       setExchangeRate(String(data.exchangeRate));
       if (data.currencyCode != null) setCurrencyCode(data.currencyCode);
       if (data.currencySymbol != null) setCurrencySymbol(data.currencySymbol);
-      toast.success('Configuración actualizada', {
-        description: 'Tasa y moneda actualizadas para toda la organización.',
+      toast.success('Configuración actualizada para toda la organización', {
+        description: 'Todos los usuarios verán la nueva tasa y moneda. Se registró quién la actualizó.',
       });
     } catch (err: any) {
       const msg = err?.response?.data?.message || err?.message || 'Error al guardar';

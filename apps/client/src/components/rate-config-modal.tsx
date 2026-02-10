@@ -47,19 +47,20 @@ export function RateConfigModal({ open, onOpenChange }: RateConfigModalProps) {
     }
     setSaving(true);
     try {
-      const { data } = await apiClient.patch<{ exchangeRate: number; rateUpdatedAt?: string | null; currencyCode?: string; currencySymbol?: string }>(
+      const { data } = await apiClient.patch<{ exchangeRate: number; rateUpdatedAt?: string | null; rateUpdatedBy?: string | null; currencyCode?: string; currencySymbol?: string }>(
         '/tenants/organization',
         { exchangeRate: num }
       );
       setOrganizationConfig(organizationId, {
         exchangeRate: data.exchangeRate,
         rateUpdatedAt: data.rateUpdatedAt ?? undefined,
+        rateUpdatedBy: data.rateUpdatedBy ?? undefined,
         currencyCode: data.currencyCode,
         currencySymbol: data.currencySymbol,
       });
       setExchangeRate(String(data.exchangeRate));
-      toast.success('Tasa actualizada', {
-        description: 'Tasa actualizada para toda la organización.',
+      toast.success('Tasa actualizada para toda la organización', {
+        description: 'Todos los usuarios verán la nueva tasa al recargar o al volver a la app. Se registró quién la actualizó.',
       });
       onOpenChange(false);
     } catch (err: any) {
