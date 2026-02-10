@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { Grid2x2, ShoppingCart, Box, MoreVertical, Users, FileText, DollarSign, Settings, LogOut } from 'lucide-react';
+import { Grid2x2, ShoppingCart, Box, MoreVertical, Users, FileText, CreditCard, DollarSign, Settings, LogOut } from 'lucide-react';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import {
@@ -33,8 +33,9 @@ const navigationItems = [
 const additionalMenuItems = [
   { id: 'customers', label: 'Clientes', icon: Users, href: '/customers', permission: 'canManageCustomers' },
   { id: 'invoices', label: 'Facturas', icon: FileText, href: '/invoices', permission: 'canManageCustomers' },
+  { id: 'credits', label: 'Cuentas por Cobrar', icon: CreditCard, href: '/credits', permission: 'canManageCustomers' },
   { id: 'expenses', label: 'Gastos', icon: DollarSign, href: '/expenses', permission: 'canManageExpenses' },
-  { id: 'settings', label: 'Configuración', icon: Settings, href: '/settings/team', permission: 'canManageTeam' },
+  { id: 'settings', label: 'Configuración', icon: Settings, href: '/settings', permission: 'canManageTeam' },
 ];
 
 export default function BottomNav() {

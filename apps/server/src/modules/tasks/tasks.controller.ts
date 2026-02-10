@@ -7,6 +7,7 @@ import {
   Param,
   ParseIntPipe,
   UseGuards,
+  Query,
 } from '@nestjs/common';
 import { TasksService } from './tasks.service';
 import { CreateTaskDto } from './dto/create-task.dto';
@@ -41,10 +42,14 @@ export class TasksController {
 
   /**
    * Obtener tareas pendientes (PENDING / IN_PROGRESS) del usuario logueado.
+   * Query: category (ej. COBRANZA) para filtrar por categoría.
    */
   @Get('my-pending')
-  getMyPending(@ActiveUser() user: { id: number }) {
-    return this.tasksService.getMyPending(user.id);
+  getMyPending(
+    @ActiveUser() user: { id: number },
+    @Query('category') category?: string,
+  ) {
+    return this.tasksService.getMyPending(user.id, category);
   }
 
   /**

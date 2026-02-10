@@ -75,6 +75,7 @@ export class AuthService {
       id: user.id,
       email: user.email,
       fullName: user.fullName,
+      isSuperAdmin: user.isSuperAdmin ?? false,
       // Organizaciones (nuevo sistema)
       organizations: organizationMemberships.map((m) => ({
         id: m.organization.id,
@@ -111,6 +112,7 @@ export class AuthService {
         id: user.id,
         email: user.email,
         fullName: user.fullName,
+        isSuperAdmin: user.isSuperAdmin,
         organizations: user.organizations, // Nuevo sistema
         companies: user.companies, // Legacy - mantener para compatibilidad
       },

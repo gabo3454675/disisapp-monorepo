@@ -2,43 +2,49 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '@/common/prisma/prisma.service';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { getCompanyIdFromOrganization } from '@/common/helpers/organization.helper';
 import PDFDocument from 'pdfkit';
 import { v4 as uuidv4 } from 'uuid';
+import { CreditsService } from '@/modules/credits/credits.service';
+import { TasksService } from '@/modules/tasks/tasks.service';
+import { TaskPriority } from '@prisma/client';
+import { PaymentStatus } from '@prisma/client';
 
 @Injectable()
 export class InvoicesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private creditsService: CreditsService,
+    private tasksService: TasksService,
+  ) {}
 
   async create(createInvoiceDto: CreateInvoiceDto, organizationId: number, sellerId: number) {
-    const { items, customerId, notes } = createInvoiceDto;
+    const { items, customerId, notes, paymentMethod: paymentMethodDto } = createInvoiceDto;
+    const isCredit = paymentMethodDto?.toUpperCase() === 'CREDIT';
 
     if (!items || items.length === 0) {
       throw new BadRequestException('La factura debe tener al menos un producto');
     }
+    if (isCredit && !customerId) {
+      throw new BadRequestException('Para venta a crédito debe seleccionar un cliente');
+    }
 
-    // Obtener companyId antes de la transacción (operación de lectura)
     const companyId = await getCompanyIdFromOrganization(this.prisma, organizationId);
 
-    // Usar transacción para asegurar integridad de datos
-    return await this.prisma.$transaction(async (tx) => {
-      // 1. Verificar stock y obtener productos con precios actualizados
+    const invoice = await this.prisma.$transaction(async (tx) => {
       const productIds = items.map((item) => item.productId);
       const products = await tx.product.findMany({
-        where: {
-          id: { in: productIds },
-          organizationId, // OBLIGATORIO: Filtro por organización para aislamiento multi-tenant
-        },
+        where: { id: { in: productIds }, organizationId },
       });
 
       if (products.length !== productIds.length) {
         throw new NotFoundException('Uno o más productos no fueron encontrados');
       }
 
-      // 2. Verificar stock y calcular totales
       let totalAmount = 0;
       const invoiceItemsData = [];
 
@@ -47,15 +53,12 @@ export class InvoicesService {
         if (!product) {
           throw new NotFoundException(`Producto con ID ${item.productId} no encontrado`);
         }
-
-        // Verificar stock
         if (product.stock < item.quantity) {
           throw new BadRequestException(
             `Stock insuficiente para ${product.name}. Disponible: ${product.stock}, Solicitado: ${item.quantity}`,
           );
         }
 
-        // Usar el precio actual del producto (no el enviado, por seguridad)
         const unitPrice = Number(product.salePrice);
         const subtotal = unitPrice * item.quantity;
         totalAmount += subtotal;
@@ -67,47 +70,93 @@ export class InvoicesService {
           subtotal,
         });
 
-        // 3. Actualizar stock (decrementar)
         await tx.product.update({
           where: { id: product.id },
-          data: {
-            stock: {
-              decrement: item.quantity,
-            },
-          },
+          data: { stock: { decrement: item.quantity } },
         });
       }
 
-      // 4. Crear la factura
+      if (isCredit) {
+        const credit = await this.creditsService.getOrCreateCredit(customerId!, organizationId);
+        const available = Number(credit.limitAmount) - Number(credit.currentBalance);
+        if (credit.status !== 'ACTIVE') {
+          throw new BadRequestException('El crédito del cliente está suspendido');
+        }
+        if (available < totalAmount) {
+          throw new BadRequestException(
+            `Límite de crédito insuficiente. Disponible: $${available.toFixed(2)}, Total: $${totalAmount.toFixed(2)}`,
+          );
+        }
+      }
 
-      // 5. Crear la factura con token público único
-      const invoice = await tx.invoice.create({
+      const paymentMethod = isCredit ? 'CREDIT' : (paymentMethodDto && ['CASH', 'ZELLE', 'CARD', 'CREDIT'].includes(String(paymentMethodDto).toUpperCase()) ? String(paymentMethodDto).toUpperCase() : 'CASH');
+      const paymentStatus = isCredit ? PaymentStatus.pending_credit : PaymentStatus.paid;
+
+      return tx.invoice.create({
         data: {
-          companyId, // Requerido por el schema
-          organizationId, // OBLIGATORIO: Inyectar organizationId del contexto (nunca del body)
+          companyId,
+          organizationId,
           customerId: customerId || null,
           sellerId,
           totalAmount,
-          status: 'PAID', // Por defecto PAID para ventas en POS
-          paymentMethod: 'CASH', // Por defecto efectivo
+          status: 'PAID',
+          paymentMethod,
+          paymentStatus,
           notes: notes || null,
-          publicToken: uuidv4(), // Generar token único para acceso público
-          items: {
-            create: invoiceItemsData,
-          },
+          publicToken: uuidv4(),
+          items: { create: invoiceItemsData },
         },
         include: {
-          items: {
-            include: {
-              product: true,
-            },
-          },
+          items: { include: { product: true } },
           customer: true,
         },
       });
-
-      return invoice;
     });
+
+    if (isCredit && customerId && invoice) {
+      const org = await this.prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { exchangeRate: true },
+      });
+      const exchangeRate = Number(org?.exchangeRate ?? 1);
+      const amountBs = Number(invoice.totalAmount) * exchangeRate;
+
+      await this.creditsService.chargeForInvoice(
+        customerId,
+        organizationId,
+        invoice.id,
+        Number(invoice.totalAmount),
+        amountBs,
+        exchangeRate,
+      );
+
+      const credit = await this.creditsService.getOrCreateCredit(customerId, organizationId);
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + (credit.creditDueDays ?? 30));
+      const customerName = invoice.customer?.name ?? 'Cliente';
+
+      await this.tasksService.create(
+        {
+          title: `Cobro: Factura #${invoice.id} - ${customerName}`,
+          description: `Monto adeudado: $${Number(invoice.totalAmount).toFixed(2)}. Factura a crédito.`,
+          assignedToId: sellerId,
+          invoiceId: invoice.id,
+          priority: TaskPriority.HIGH,
+          category: 'COBRANZA',
+          dueDate: dueDate.toISOString(),
+        },
+        organizationId,
+        sellerId,
+      );
+    }
+
+    return this.prisma.invoice.findUnique({
+      where: { id: invoice.id },
+      include: {
+        items: { include: { product: true } },
+        customer: true,
+      },
+    })!;
   }
 
   async findAll(organizationId: number) {
@@ -147,6 +196,78 @@ export class InvoicesService {
       },
       take: limit,
     });
+  }
+
+  /**
+   * Borra todo el historial de ventas/facturación de la organización actual.
+   * Solo super_admin. Para dejar el sistema en cero durante el desarrollo.
+   */
+  async clearTestData(organizationId: number, userId: number) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { isSuperAdmin: true },
+    });
+    if (!user?.isSuperAdmin) {
+      throw new ForbiddenException(
+        'Solo el Super Admin puede borrar el historial de ventas',
+      );
+    }
+
+    const invoices = await this.prisma.invoice.findMany({
+      where: { organizationId },
+      select: { id: true },
+    });
+    const invoiceIds = invoices.map((i) => i.id);
+    if (invoiceIds.length === 0) {
+      return { message: 'No hay facturas para eliminar', deleted: 0 };
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.task.updateMany({
+        where: { invoiceId: { in: invoiceIds } },
+        data: { invoiceId: null },
+      }),
+      this.prisma.invoiceItem.deleteMany({
+        where: { invoiceId: { in: invoiceIds } },
+      }),
+      this.prisma.invoice.deleteMany({ where: { organizationId } }),
+    ]);
+
+    return {
+      message: 'Historial de ventas/facturación eliminado correctamente',
+      deleted: invoiceIds.length,
+    };
+  }
+
+  /**
+   * Elimina una factura. Solo permitido para super_admin.
+   */
+  async remove(id: number, organizationId: number, userId: number) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { isSuperAdmin: true },
+    });
+    if (!user?.isSuperAdmin) {
+      throw new ForbiddenException('Solo el Super Admin puede eliminar facturas');
+    }
+
+    const invoice = await this.prisma.invoice.findFirst({
+      where: { id, organizationId },
+    });
+    if (!invoice) {
+      throw new NotFoundException(`Factura con ID ${id} no encontrada`);
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.task.updateMany({
+        where: { invoiceId: id },
+        data: { invoiceId: null },
+      }),
+      this.prisma.invoiceItem.deleteMany({ where: { invoiceId: id } }),
+      this.prisma.invoice.delete({ where: { id } }),
+    ]);
+
+    return { message: 'Factura eliminada correctamente' };
   }
 
   async findOne(id: number, organizationId: number) {
@@ -319,17 +440,25 @@ export class InvoicesService {
   async generatePDF(id: number, organizationId: number): Promise<Buffer> {
     const invoice = await this.findOne(id, organizationId);
 
-    return new Promise(async (resolve, reject) => {
+    return new Promise((resolve, reject) => {
       const doc = new PDFDocument({ margin: 50 });
       const buffers: Buffer[] = [];
 
-      doc.on('data', buffers.push.bind(buffers));
+      doc.on('data', (chunk: Buffer) => buffers.push(chunk));
       doc.on('end', () => {
-        const pdfBuffer = Buffer.concat(buffers);
-        resolve(pdfBuffer);
+        try {
+          const pdfBuffer = Buffer.concat(buffers);
+          resolve(pdfBuffer);
+        } catch (e) {
+          reject(e);
+        }
       });
-      doc.on('error', reject);
+      doc.on('error', (err) => {
+        if (typeof (doc as any).destroy === 'function') (doc as any).destroy();
+        reject(err);
+      });
 
+      try {
       // Configuración de colores
       const primaryColor = '#1e40af';
       const textColor = '#1f2937';
@@ -585,6 +714,10 @@ export class InvoicesService {
         );
 
       doc.end();
+      } catch (err) {
+        if (typeof (doc as any).destroy === 'function') (doc as any).destroy();
+        reject(err instanceof Error ? err : new Error(String(err)));
+      }
     });
   }
 }

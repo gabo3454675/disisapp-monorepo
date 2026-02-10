@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { ChevronLeft, Grid2x2, ShoppingCart, Box, ChevronDown, LogOut, Check, DollarSign, FileText, Users, Settings, Download } from 'lucide-react';
+import { ChevronLeft, Grid2x2, ShoppingCart, Box, ChevronDown, LogOut, Check, DollarSign, FileText, Users, Settings, Download, CreditCard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
@@ -26,8 +26,9 @@ const navigationItems = [
   { id: 'products', label: 'Inventario', icon: Box, href: '/products', permission: 'canManageProducts' },
   { id: 'customers', label: 'Clientes', icon: Users, href: '/customers', permission: 'canManageCustomers' },
   { id: 'invoices', label: 'Facturas', icon: FileText, href: '/invoices', permission: 'canManageCustomers' },
+  { id: 'credits', label: 'Cuentas por Cobrar', icon: CreditCard, href: '/credits', permission: 'canManageCustomers' },
   { id: 'expenses', label: 'Gastos', icon: DollarSign, href: '/expenses', permission: 'canManageExpenses' },
-  { id: 'settings', label: 'Configuración', icon: Settings, href: '/settings/team', permission: 'canManageTeam' },
+  { id: 'settings', label: 'Configuración', icon: Settings, href: '/settings', permission: 'canManageTeam' },
 ];
 
 export default function Sidebar() {
@@ -56,6 +57,7 @@ export default function Sidebar() {
     if (pathname.startsWith('/products') || pathname.startsWith('/inventory')) return 'products';
     if (pathname.startsWith('/customers')) return 'customers';
     if (pathname.startsWith('/invoices')) return 'invoices';
+    if (pathname.startsWith('/credits')) return 'credits';
     if (pathname.startsWith('/expenses')) return 'expenses';
     if (pathname.startsWith('/settings')) return 'settings';
     return 'dashboard';

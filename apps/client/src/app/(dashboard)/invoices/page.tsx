@@ -11,7 +11,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Download, Loader2, Search, FileText, UserPlus } from 'lucide-react';
+import { Download, Loader2, Search, FileText, UserPlus, Trash2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { InvoiceDetailSheet } from '@/components/invoice-detail-sheet';
 import { AssignTaskModal } from '@/components/assign-task-modal';
@@ -46,7 +46,8 @@ interface Invoice {
 }
 
 export default function InvoicesPage() {
-  const { selectedCompanyId } = useAuthStore();
+  const { selectedCompanyId, user } = useAuthStore();
+  const isSuperAdmin = !!user?.isSuperAdmin;
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -74,13 +75,31 @@ export default function InvoicesPage() {
     fetchInvoices();
   }, [fetchInvoices]);
 
+  const handleDeleteInvoice = async (invoiceId: number) => {
+    if (!confirm('¿Eliminar esta factura? Esta acción no se puede deshacer.')) return;
+    try {
+      await apiClient.delete(`/invoices/${invoiceId}`);
+      fetchInvoices();
+    } catch (error: any) {
+      console.error('Error deleting invoice:', error);
+      alert(error.response?.data?.message ?? 'No tienes permiso para eliminar facturas');
+    }
+  };
+
   const handleDownloadPDF = async (invoiceId: number) => {
     try {
       const response = await apiClient.get(`/invoices/${invoiceId}/pdf`, {
         responseType: 'blob',
       });
 
-      // Crear un blob y abrir en nueva pestaña
+      const contentType = response.headers?.['content-type'] ?? '';
+      if (contentType.includes('application/json')) {
+        const text = await (response.data as Blob).text();
+        const data = JSON.parse(text);
+        alert(data?.message ?? 'Error al descargar la factura');
+        return;
+      }
+
       const blob = new Blob([response.data], { type: 'application/pdf' });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -91,9 +110,10 @@ export default function InvoicesPage() {
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error downloading PDF:', error);
-      alert('Error al descargar la factura');
+      const msg = error.response?.data?.message ?? 'Error al descargar la factura';
+      alert(typeof msg === 'string' ? msg : 'Error al descargar la factura');
     }
   };
 
@@ -157,29 +177,20 @@ export default function InvoicesPage() {
                 {searchQuery ? 'No se encontraron facturas' : 'No hay facturas registradas'}
               </p>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>ID</TableHead>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Total</TableHead>
-                    <TableHead>Estado</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+              <>
+                {/* Vista tarjetas en móvil */}
+                <div className="md:hidden space-y-3">
                   {filteredInvoices.map((invoice) => (
-                    <TableRow key={invoice.id}>
-                      <TableCell className="font-medium">#{invoice.id}</TableCell>
-                      <TableCell>{invoice.customer?.name || 'Cliente General'}</TableCell>
-                      <TableCell>{formatDate(invoice.createdAt)}</TableCell>
-                      <TableCell className="font-semibold">
-                        {formatCurrency(Number(invoice.totalAmount))}
-                      </TableCell>
-                      <TableCell>
+                    <Card key={invoice.id} className="p-4">
+                      <div className="flex justify-between items-start gap-2 mb-3">
+                        <div>
+                          <p className="font-semibold">#{invoice.id}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {invoice.customer?.name || 'Cliente General'} · {formatDate(invoice.createdAt)}
+                          </p>
+                        </div>
                         <span
-                          className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                          className={`shrink-0 inline-flex px-2 py-1 rounded-full text-xs font-medium ${
                             invoice.status === 'PAID'
                               ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
                               : invoice.status === 'PENDING'
@@ -187,51 +198,119 @@ export default function InvoicesPage() {
                                 : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
                           }`}
                         >
-                          {invoice.status === 'PAID'
-                            ? 'Pagada'
-                            : invoice.status === 'PENDING'
-                              ? 'Pendiente'
-                              : 'Cancelada'}
+                          {invoice.status === 'PAID' ? 'Pagada' : invoice.status === 'PENDING' ? 'Pendiente' : 'Cancelada'}
                         </span>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2 flex-wrap">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setDetailInvoiceId(invoice.id);
-                              setDetailSheetOpen(true);
-                            }}
-                          >
-                            <FileText className="mr-2 h-4 w-4" />
-                            Ver detalle
+                      </div>
+                      <p className="font-bold text-primary mb-3">{formatCurrency(Number(invoice.totalAmount))}</p>
+                      <div className="flex flex-wrap gap-2">
+                        <Button variant="outline" size="sm" onClick={() => { setDetailInvoiceId(invoice.id); setDetailSheetOpen(true); }}>
+                          <FileText className="mr-1 h-4 w-4" /> Ver
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => { setAssignModalInvoiceId(invoice.id); setAssignModalOpen(true); }}>
+                          <UserPlus className="mr-1 h-4 w-4" /> Asignar
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => handleDownloadPDF(invoice.id)}>
+                          <Download className="mr-1 h-4 w-4" /> PDF
+                        </Button>
+                        {isSuperAdmin && (
+                          <Button variant="outline" size="sm" className="text-destructive" onClick={() => handleDeleteInvoice(invoice.id)}>
+                            <Trash2 className="mr-1 h-4 w-4" /> Eliminar
                           </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setAssignModalInvoiceId(invoice.id);
-                              setAssignModalOpen(true);
-                            }}
-                          >
-                            <UserPlus className="mr-2 h-4 w-4" />
-                            Asignar Revisión
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleDownloadPDF(invoice.id)}
-                          >
-                            <Download className="mr-2 h-4 w-4" />
-                            PDF
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
+                        )}
+                      </div>
+                    </Card>
                   ))}
-                </TableBody>
-              </Table>
+                </div>
+                {/* Vista tabla con scroll horizontal en pantallas pequeñas */}
+                <div className="hidden md:block overflow-x-auto -mx-4 sm:mx-0 rounded-md border border-border">
+                  <Table className="min-w-[700px]">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>ID</TableHead>
+                        <TableHead>Cliente</TableHead>
+                        <TableHead>Fecha</TableHead>
+                        <TableHead>Total</TableHead>
+                        <TableHead>Estado</TableHead>
+                        <TableHead className="text-right">Acciones</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredInvoices.map((invoice) => (
+                        <TableRow key={invoice.id}>
+                          <TableCell className="font-medium">#{invoice.id}</TableCell>
+                          <TableCell>{invoice.customer?.name || 'Cliente General'}</TableCell>
+                          <TableCell>{formatDate(invoice.createdAt)}</TableCell>
+                          <TableCell className="font-semibold">
+                            {formatCurrency(Number(invoice.totalAmount))}
+                          </TableCell>
+                          <TableCell>
+                            <span
+                              className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                invoice.status === 'PAID'
+                                  ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+                                  : invoice.status === 'PENDING'
+                                    ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400'
+                                    : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+                              }`}
+                            >
+                              {invoice.status === 'PAID'
+                                ? 'Pagada'
+                                : invoice.status === 'PENDING'
+                                  ? 'Pendiente'
+                                  : 'Cancelada'}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-2 flex-wrap">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setDetailInvoiceId(invoice.id);
+                                  setDetailSheetOpen(true);
+                                }}
+                              >
+                                <FileText className="mr-2 h-4 w-4" />
+                                Ver detalle
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setAssignModalInvoiceId(invoice.id);
+                                  setAssignModalOpen(true);
+                                }}
+                              >
+                                <UserPlus className="mr-2 h-4 w-4" />
+                                Asignar Revisión
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleDownloadPDF(invoice.id)}
+                              >
+                                <Download className="mr-2 h-4 w-4" />
+                                PDF
+                              </Button>
+                              {isSuperAdmin && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-destructive hover:text-destructive"
+                                  onClick={() => handleDeleteInvoice(invoice.id)}
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Eliminar
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
             )}
           </CardContent>
         </Card>

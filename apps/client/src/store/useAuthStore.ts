@@ -25,6 +25,7 @@ interface User {
   id: number;
   email: string;
   fullName?: string | null;
+  isSuperAdmin?: boolean;
   organizations?: Organization[]; // Nuevo sistema
   companies?: Company[]; // Legacy - mantener para compatibilidad
 }

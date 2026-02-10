@@ -109,6 +109,13 @@ export function InvoiceDetailSheet({
     if (!invoiceId) return;
     try {
       const response = await apiClient.get(`/invoices/${invoiceId}/pdf`, { responseType: 'blob' });
+      const contentType = response.headers?.['content-type'] ?? '';
+      if (contentType.includes('application/json')) {
+        const text = await (response.data as Blob).text();
+        const data = JSON.parse(text);
+        alert(data?.message ?? 'Error al descargar la factura');
+        return;
+      }
       const blob = new Blob([response.data], { type: 'application/pdf' });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -119,8 +126,8 @@ export function InvoiceDetailSheet({
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
-    } catch {
-      alert('Error al descargar la factura');
+    } catch (error: any) {
+      alert(error.response?.data?.message ?? 'Error al descargar la factura');
     }
   };
 

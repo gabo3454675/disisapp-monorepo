@@ -3,6 +3,7 @@ import {
   IsOptional,
   IsInt,
   IsEnum,
+  IsDateString,
   MinLength,
   MaxLength,
 } from 'class-validator';
@@ -33,4 +34,13 @@ export class CreateTaskDto {
   @IsOptional()
   @IsInt()
   invoiceId?: number;
+
+  @IsOptional()
+  @IsDateString()
+  dueDate?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  category?: string;
 }

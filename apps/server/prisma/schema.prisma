@@ -119,6 +119,7 @@ model Organization {
   invitations      Invitation[] // Invitaciones para unirse a la organización
   tasks            Task[]       // Tareas de la organización (workflow)
   auditLogs        AuditLog[]   // Historial de acciones sensibles
+  customerCredits  CustomerCredit[] // Cuentas de crédito por organización
 
   @@index([slug])
   @@map("organizations")
@@ -182,21 +183,22 @@ model Member {
 // ------------------------------------------
 
 model Product {
-  id            Int      @id @default(autoincrement())
-  companyId     Int      // Legacy: mantener para compatibilidad
-  organizationId Int?    // Nueva relación Multi-Tenant
-  name          String
-  description   String?  // Descripción del producto (para import masivo / inventario)
-  sku           String?
-  barcode       String?  // Para el escáner
-  costPrice     Decimal  @default(0) @db.Decimal(10, 2)
-  salePrice     Decimal  @default(0) @db.Decimal(10, 2)
-  stock         Int      @default(0)
-  imageUrl      String?
-  minStock      Int      @default(5) // Alerta de stock bajo
-  isExempt      Boolean  @default(false) // Exento de impuesto (columna EXENTO en plantilla: SI/NO)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                Int      @id @default(autoincrement())
+  companyId         Int      // Legacy: mantener para compatibilidad
+  organizationId    Int?     // Nueva relación Multi-Tenant
+  name              String
+  description       String?  // Descripción del producto (para import masivo / inventario)
+  sku               String?
+  barcode           String?  // Para el escáner
+  costPrice         Decimal  @default(0) @db.Decimal(10, 2)
+  salePrice         Decimal  @default(0) @db.Decimal(10, 2)
+  salePriceCurrency String   @default("USD") // Moneda en que se registró el precio: USD o VES (Bolívares)
+  stock             Int      @default(0)
+  imageUrl          String?
+  minStock          Int      @default(5) // Alerta de stock bajo
+  isExempt          Boolean  @default(false) // Exento de impuesto (columna EXENTO en plantilla: SI/NO)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   company       Company       @relation(fields: [companyId], references: [id])
   organization  Organization? @relation(fields: [organizationId], references: [id])
@@ -230,12 +232,74 @@ model Customer {
   company       Company       @relation(fields: [companyId], references: [id])
   organization  Organization? @relation(fields: [organizationId], references: [id])
   invoices      Invoice[]
+  customerCredit CustomerCredit? // Cuenta de crédito (maestro)
 
   @@index([companyId])
   @@index([organizationId])
   @@index([name])
   @@index([taxId])
   @@map("customers")
+}
+
+// ------------------------------------------
+// CUENTAS POR COBRAR (Créditos a clientes)
+// ------------------------------------------
+
+enum CreditStatus {
+  ACTIVE    // Límite disponible
+  SUSPENDED // Crédito suspendido
+}
+
+enum CreditTransactionType {
+  CHARGE   // Cargo por venta a crédito
+  PAYMENT  // Abono del cliente
+}
+
+model CustomerCredit {
+  id             Int           @id @default(autoincrement())
+  customerId     Int           @unique // Un crédito por cliente
+  organizationId Int           // Multi-tenant
+  limitAmount    Decimal       @db.Decimal(15, 2) // Límite de crédito permitido (USD)
+  currentBalance Decimal       @db.Decimal(15, 2) @default(0) // Saldo deudor actual (USD)
+  status         CreditStatus  @default(ACTIVE) // Activo / Suspendido
+  creditDueDays  Int           @default(30) // Días para vencimiento de cobranza (tarea)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  customer   Customer            @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  organization Organization      @relation(fields: [organizationId], references: [id])
+  transactions CreditTransaction[]
+
+  @@index([customerId])
+  @@index([organizationId])
+  @@index([status])
+  @@map("customer_credits")
+}
+
+model CreditTransaction {
+  id           Int                   @id @default(autoincrement())
+  creditId     Int
+  invoiceId    Int?                   // Opcional: factura asociada (cargo o abono aplicado a factura)
+  type         CreditTransactionType  // CARGO por venta / ABONO por pago
+  amountUsd    Decimal               @db.Decimal(15, 2)
+  amountBs     Decimal               @db.Decimal(15, 2) // Equivalente en BS según tasa del momento
+  exchangeRate Decimal               @db.Decimal(12, 4) // Tasa usada para trazabilidad
+  description  String?
+  createdAt    DateTime              @default(now())
+
+  credit  CustomerCredit @relation(fields: [creditId], references: [id], onDelete: Cascade)
+  invoice Invoice?       @relation(fields: [invoiceId], references: [id])
+
+  @@index([creditId])
+  @@index([invoiceId])
+  @@index([createdAt])
+  @@map("credit_transactions")
+}
+
+enum PaymentStatus {
+  paid            // Totalmente pagada
+  partial         // Pago parcial
+  pending_credit  // Vendida a crédito, pendiente de cobro
 }
 
 model Invoice {
@@ -246,7 +310,8 @@ model Invoice {
   sellerId      Int           // El usuario que creó la factura
   totalAmount   Decimal       @db.Decimal(15, 2)
   status        InvoiceStatus @default(PAID)
-  paymentMethod String        @default("CASH") // CASH, ZELLE, CARD
+  paymentMethod String        @default("CASH") // CASH, ZELLE, CARD, CREDIT
+  paymentStatus PaymentStatus @default(paid) // paid, partial, pending_credit
   notes         String?
   pdfUrl        String?       // Link al PDF generado
   publicToken   String?       @unique // Token UUID para acceso público a la factura
@@ -265,11 +330,13 @@ model Invoice {
   seller        User          @relation(fields: [sellerId], references: [id])
   items         InvoiceItem[]
   tasks         Task[]        // Tareas asociadas a esta factura (opcional)
+  creditTransactions CreditTransaction[] // Abonos/cargos asociados
 
   @@index([companyId])
   @@index([organizationId])
   @@index([publicToken])
   @@index([markedAsPaidByClient])
+  @@index([paymentStatus])
   @@map("invoices")
 }
 
@@ -420,7 +487,9 @@ model Task {
   organizationId  Int          // Multi-tenant: obligatorio
   assignedToId   Int          // Empleado que debe hacer la tarea
   createdById     Int          // Admin que asignó
-  invoiceId       Int?         // Opcional: factura relacionada
+  invoiceId       Int?         // Opcional: factura relacionada (ej. cobranza)
+  dueDate         DateTime?    // Vencimiento (ej. para tareas de Cobranza)
+  category        String?      // Ej. "COBRANZA" para filtrar
 
   organization  Organization @relation(fields: [organizationId], references: [id])
   assignedTo    User         @relation("TasksAssigned", fields: [assignedToId], references: [id])
@@ -435,6 +504,8 @@ model Task {
   @@index([createdById])
   @@index([status])
   @@index([read])
+  @@index([category])
+  @@index([dueDate])
   @@map("tasks")
 }
 

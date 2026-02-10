@@ -19,6 +19,7 @@ import { ExpensesModule } from './modules/expenses/expenses.module';
 import { ExpenseCategoriesModule } from './modules/expense-categories/expense-categories.module';
 import { InvitationsModule } from './modules/invitations/invitations.module';
 import { TasksModule } from './modules/tasks/tasks.module';
+import { CreditsModule } from './modules/credits/credits.module';
 import { BackupModule } from './modules/backup/backup.module';
 
 @Module({
@@ -46,6 +47,7 @@ import { BackupModule } from './modules/backup/backup.module';
     ExpenseCategoriesModule,
     InvitationsModule,
     TasksModule,
+    CreditsModule,
     BackupModule,
   ],
   controllers: [AppController],

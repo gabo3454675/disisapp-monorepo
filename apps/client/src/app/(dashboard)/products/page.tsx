@@ -28,6 +28,8 @@ import { useAuthStore } from '@/store/useAuthStore';
 import { useDebounce } from '@/hooks/useDebounce';
 import { usePermission } from '@/hooks/usePermission';
 
+type SalePriceCurrency = 'USD' | 'VES';
+
 interface Product {
   id: number;
   name: string;
@@ -35,6 +37,8 @@ interface Product {
   barcode?: string | null;
   costPrice: number;
   salePrice: number;
+  /** Moneda en que está registrado el precio (USD o VES). Por defecto USD. */
+  salePriceCurrency?: string | null;
   stock: number;
   minStock: number;
   imageUrl?: string | null;
@@ -54,6 +58,7 @@ export default function ProductsPage() {
     sku: '',
     barcode: '',
     salePrice: '',
+    salePriceCurrency: 'USD' as SalePriceCurrency,
     costPrice: '',
     stock: '',
     minStock: '5',
@@ -131,6 +136,7 @@ export default function ProductsPage() {
         sku: product.sku || '',
         barcode: product.barcode || '',
         salePrice: product.salePrice.toString(),
+        salePriceCurrency: (product.salePriceCurrency === 'VES' ? 'VES' : 'USD') as SalePriceCurrency,
         costPrice: product.costPrice.toString(),
         stock: product.stock.toString(),
         minStock: product.minStock.toString(),
@@ -142,6 +148,7 @@ export default function ProductsPage() {
         sku: '',
         barcode: '',
         salePrice: '',
+        salePriceCurrency: 'USD',
         costPrice: '',
         stock: '',
         minStock: '5',
@@ -158,6 +165,7 @@ export default function ProductsPage() {
       sku: '',
       barcode: '',
       salePrice: '',
+      salePriceCurrency: 'USD',
       costPrice: '',
       stock: '',
       minStock: '5',
@@ -180,6 +188,7 @@ export default function ProductsPage() {
         sku: formData.sku || undefined,
         barcode: formData.barcode || undefined,
         salePrice: parseFloat(formData.salePrice),
+        salePriceCurrency: formData.salePriceCurrency,
         costPrice: formData.costPrice ? parseFloat(formData.costPrice) : undefined,
         stock: formData.stock ? parseInt(formData.stock) : undefined,
         minStock: formData.minStock ? parseInt(formData.minStock) : undefined,
@@ -440,29 +449,25 @@ export default function ProductsPage() {
                 {searchQuery ? 'No se encontraron productos' : 'No hay productos registrados'}
               </p>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Nombre</TableHead>
-                    <TableHead>Precio</TableHead>
-                    <TableHead>Stock</TableHead>
-                    <TableHead>Código de Barras</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+              <>
+                {/* Vista tarjetas: móviles y pantallas pequeñas */}
+                <div className="md:hidden space-y-3">
                   {filteredProducts.map((product) => (
-                    <TableRow key={product.id}>
-                      <TableCell className="font-medium">{product.name}</TableCell>
-                      <TableCell>{formatCurrency(Number(product.salePrice))}</TableCell>
-                      <TableCell>{product.stock}</TableCell>
-                      <TableCell>{product.barcode || '-'}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
+                    <Card key={product.id} className="p-4">
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium truncate">{product.name}</p>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            {formatCurrency(Number(product.salePrice))} · Stock: {product.stock}
+                            {product.barcode ? ` · ${product.barcode}` : ''}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 gap-1">
                           {canManageProducts && (
                             <Button
                               variant="ghost"
                               size="icon"
+                              className="h-8 w-8"
                               onClick={() => handleOpenDialog(product)}
                             >
                               <Edit className="h-4 w-4" />
@@ -472,17 +477,64 @@ export default function ProductsPage() {
                             <Button
                               variant="ghost"
                               size="icon"
+                              className="h-8 w-8"
                               onClick={() => handleDelete(product.id)}
                             >
                               <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
                           )}
                         </div>
-                      </TableCell>
-                    </TableRow>
+                      </div>
+                    </Card>
                   ))}
-                </TableBody>
-              </Table>
+                </div>
+                {/* Vista tabla: scroll horizontal en tablets, normal en desktop */}
+                <div className="hidden md:block overflow-x-auto -mx-4 sm:mx-0 rounded-md border border-border">
+                  <Table className="min-w-[600px]">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Nombre</TableHead>
+                        <TableHead>Precio</TableHead>
+                        <TableHead>Stock</TableHead>
+                        <TableHead>Código de Barras</TableHead>
+                        <TableHead className="text-right">Acciones</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredProducts.map((product) => (
+                        <TableRow key={product.id}>
+                          <TableCell className="font-medium">{product.name}</TableCell>
+                          <TableCell>{formatCurrency(Number(product.salePrice))}</TableCell>
+                          <TableCell>{product.stock}</TableCell>
+                          <TableCell>{product.barcode || '-'}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              {canManageProducts && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleOpenDialog(product)}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                              )}
+                              {canDelete && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleDelete(product.id)}
+                                >
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
             )}
           </CardContent>
         </Card>
@@ -557,6 +609,23 @@ export default function ProductsPage() {
                       required
                     />
                   </div>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="salePriceCurrency">Moneda del precio de venta</Label>
+                  <select
+                    id="salePriceCurrency"
+                    value={formData.salePriceCurrency}
+                    onChange={(e) =>
+                      setFormData({ ...formData, salePriceCurrency: e.target.value as SalePriceCurrency })
+                    }
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                  >
+                    <option value="USD">USD (Dólares)</option>
+                    <option value="VES">BS (Bolívares)</option>
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    El producto se guarda en esta moneda. En el POS se convierte con la tasa del día si el cliente paga en la otra moneda.
+                  </p>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="grid gap-2">

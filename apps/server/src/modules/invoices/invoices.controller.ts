@@ -4,6 +4,7 @@ import {
   Post,
   Body,
   Param,
+  Delete,
   UseGuards,
   ParseIntPipe,
   Res,
@@ -48,6 +49,49 @@ export class InvoicesController {
     return this.invoicesService.getClientMarkedAsPaid(organizationId);
   }
 
+  /**
+   * Limpia el historial de ventas/facturación de la organización (solo super_admin, desarrollo).
+   */
+  @Post('clear-test-data')
+  async clearTestData(
+    @ActiveOrganization() organizationId: number,
+    @ActiveUser() user: { id: number },
+  ) {
+    return this.invoicesService.clearTestData(organizationId, user.id);
+  }
+
+  @Delete(':id')
+  async remove(
+    @Param('id', ParseIntPipe) id: number,
+    @ActiveOrganization() organizationId: number,
+    @ActiveUser() user: { id: number },
+  ) {
+    return this.invoicesService.remove(id, organizationId, user.id);
+  }
+
+  @Get(':id/pdf')
+  @Header('Content-Type', 'application/pdf')
+  @Header('Content-Disposition', 'attachment; filename="factura.pdf"')
+  async getPDF(
+    @Param('id', ParseIntPipe) id: number,
+    @ActiveOrganization() organizationId: number,
+    @Res() res: Response,
+  ) {
+    try {
+      const pdfBuffer = await this.invoicesService.generatePDF(id, organizationId);
+      res.set({
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="factura-${id}.pdf"`,
+        'Content-Length': pdfBuffer.length,
+      });
+      res.send(pdfBuffer);
+    } catch (err: any) {
+      const status = err?.status ?? 500;
+      const message = err?.message ?? 'Error al generar el PDF';
+      res.status(status).json({ message });
+    }
+  }
+
   @Get(':id')
   async findOne(
     @Param('id', ParseIntPipe) id: number,
@@ -67,22 +111,5 @@ export class InvoicesController {
       };
     }
     return invoice;
-  }
-
-  @Get(':id/pdf')
-  @Header('Content-Type', 'application/pdf')
-  @Header('Content-Disposition', 'attachment; filename="factura.pdf"')
-  async getPDF(
-    @Param('id', ParseIntPipe) id: number,
-    @ActiveOrganization() organizationId: number,
-    @Res() res: Response,
-  ) {
-    const pdfBuffer = await this.invoicesService.generatePDF(id, organizationId);
-    res.set({
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="factura-${id}.pdf"`,
-      'Content-Length': pdfBuffer.length,
-    });
-    res.send(pdfBuffer);
   }
 }

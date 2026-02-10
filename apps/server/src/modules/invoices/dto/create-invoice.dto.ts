@@ -24,4 +24,8 @@ export class CreateInvoiceDto {
 
   @IsOptional()
   notes?: string;
+
+  /** Si se envía "CREDIT", la venta es a crédito (verifica límite y crea tarea de cobranza). */
+  @IsOptional()
+  paymentMethod?: string;
 }

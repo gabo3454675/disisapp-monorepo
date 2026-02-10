@@ -87,6 +87,8 @@ export class TasksService {
         assignedToId: dto.assignedToId,
         createdById,
         invoiceId: dto.invoiceId ?? undefined,
+        dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
+        category: dto.category ?? undefined,
       },
       include: {
         assignedTo: {
@@ -120,14 +122,16 @@ export class TasksService {
 
   /**
    * Obtiene las tareas pendientes (PENDING o IN_PROGRESS) del usuario logueado.
+   * category opcional: ej. "COBRANZA" para filtrar.
    */
-  async getMyPending(userId: number) {
+  async getMyPending(userId: number, category?: string) {
     const tasks = await this.prisma.task.findMany({
       where: {
         assignedToId: userId,
         status: {
           in: [TaskStatus.PENDING, TaskStatus.IN_PROGRESS],
         },
+        ...(category ? { category } : {}),
       },
       include: {
         createdBy: {

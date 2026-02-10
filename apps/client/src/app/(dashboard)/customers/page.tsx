@@ -21,7 +21,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus, Edit, Trash2, Search, Loader2 } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Loader2, AlertCircle } from 'lucide-react';
 import apiClient from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -52,8 +52,19 @@ export default function CustomersPage() {
     address: '',
   });
   const [submitting, setSubmitting] = useState(false);
+  const [overdueCustomerIds, setOverdueCustomerIds] = useState<number[]>([]);
 
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
+
+  const fetchOverdueCustomerIds = useCallback(async () => {
+    if (!selectedCompanyId) return;
+    try {
+      const res = await apiClient.get<{ customerIds: number[] }>('/credits/overdue-customer-ids');
+      setOverdueCustomerIds(res.data.customerIds || []);
+    } catch {
+      setOverdueCustomerIds([]);
+    }
+  }, [selectedCompanyId]);
 
   const fetchCustomers = useCallback(async () => {
     if (!selectedCompanyId) return;
@@ -73,6 +84,10 @@ export default function CustomersPage() {
   useEffect(() => {
     fetchCustomers();
   }, [fetchCustomers]);
+
+  useEffect(() => {
+    fetchOverdueCustomerIds();
+  }, [fetchOverdueCustomerIds]);
 
   const handleOpenDialog = (customer?: Customer) => {
     if (customer) {
@@ -227,7 +242,20 @@ export default function CustomersPage() {
                 <TableBody>
                   {filteredCustomers.map((customer) => (
                     <TableRow key={customer.id}>
-                      <TableCell className="font-medium">{customer.name}</TableCell>
+                      <TableCell className="font-medium">
+                        <span className="inline-flex items-center gap-2">
+                          {customer.name}
+                          {overdueCustomerIds.includes(customer.id) && (
+                            <span
+                              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium bg-destructive/15 text-destructive border border-destructive/30"
+                              title="Deuda vencida"
+                            >
+                              <AlertCircle className="h-3.5 w-3.5" />
+                              Deuda vencida
+                            </span>
+                          )}
+                        </span>
+                      </TableCell>
                       <TableCell>{customer.email || '-'}</TableCell>
                       <TableCell>{customer.phone || '-'}</TableCell>
                       <TableCell>{customer.taxId || '-'}</TableCell>

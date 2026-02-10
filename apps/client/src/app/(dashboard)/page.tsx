@@ -218,6 +218,7 @@ export default function DashboardPage() {
   const [loadingDiagnosis, setLoadingDiagnosis] = useState(false);
   const [strategy, setStrategy] = useState<DashboardStrategy>(DEFAULT_STRATEGY);
   const [loadingStrategy, setLoadingStrategy] = useState(false);
+  const [taskCategoryFilter, setTaskCategoryFilter] = useState<string>('');
 
   const canSeeCreatedByMe = isSuperAdmin || isAdmin || isManager;
 
@@ -281,14 +282,15 @@ export default function DashboardPage() {
     if (!isAuthenticated) return;
     try {
       setLoadingTasks(true);
-      const res = await apiClient.get<PendingTask[]>('/tasks/my-pending');
+      const url = taskCategoryFilter ? `/tasks/my-pending?category=${encodeURIComponent(taskCategoryFilter)}` : '/tasks/my-pending';
+      const res = await apiClient.get<PendingTask[]>(url);
       setPendingTasks(Array.isArray(res.data) ? res.data : []);
     } catch {
       setPendingTasks([]);
     } finally {
       setLoadingTasks(false);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, taskCategoryFilter]);
 
   const fetchCreatedByMeTasks = useCallback(async () => {
     if (!isAuthenticated || !canSeeCreatedByMe) return;
@@ -489,6 +491,22 @@ export default function DashboardPage() {
                 <span className="min-w-0">Mis Tareas Pendientes</span>
               </CardTitle>
               <CardDescription className="text-xs sm:text-sm">Tareas asignadas a ti (pendientes o en progreso)</CardDescription>
+              <div className="flex flex-wrap gap-2 pt-2">
+                <Button
+                  variant={taskCategoryFilter === '' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setTaskCategoryFilter('')}
+                >
+                  Todas
+                </Button>
+                <Button
+                  variant={taskCategoryFilter === 'COBRANZA' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setTaskCategoryFilter('COBRANZA')}
+                >
+                  Cobranza
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="p-4 sm:p-6 pt-0 sm:pt-0">
               {loadingTasks ? (

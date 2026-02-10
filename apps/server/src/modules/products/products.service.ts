@@ -66,6 +66,7 @@ export class ProductsService {
         costPrice: createProductDto.costPrice ?? 0,
         stock: createProductDto.stock ?? 0,
         minStock: createProductDto.minStock ?? 5,
+        salePriceCurrency: createProductDto.salePriceCurrency ?? 'USD',
       },
     });
   }
