@@ -17,6 +17,7 @@ import { InvoiceDetailSheet } from '@/components/invoice-detail-sheet';
 import { AssignTaskModal } from '@/components/assign-task-modal';
 import apiClient from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
+import { useDisplayCurrency } from '@/hooks/useDisplayCurrency';
 
 interface InvoiceItem {
   id: number;
@@ -117,13 +118,7 @@ export default function InvoicesPage() {
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('es-VE', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-    }).format(amount);
-  };
+  const { formatForDisplay } = useDisplayCurrency();
 
   const formatDate = (dateString: string) => {
     return new Intl.DateTimeFormat('es-VE', {
@@ -140,7 +135,7 @@ export default function InvoicesPage() {
     return (
       invoice.id.toString().includes(query) ||
       invoice.customer?.name.toLowerCase().includes(query) ||
-      formatCurrency(Number(invoice.totalAmount)).toLowerCase().includes(query)
+      invoice.totalAmount.toString().includes(query)
     );
   });
 
@@ -201,7 +196,7 @@ export default function InvoicesPage() {
                           {invoice.status === 'PAID' ? 'Pagada' : invoice.status === 'PENDING' ? 'Pendiente' : 'Cancelada'}
                         </span>
                       </div>
-                      <p className="font-bold text-primary mb-3">{formatCurrency(Number(invoice.totalAmount))}</p>
+                      <p className="font-bold text-primary mb-3">{formatForDisplay(Number(invoice.totalAmount))}</p>
                       <div className="flex flex-wrap gap-2">
                         <Button variant="outline" size="sm" onClick={() => { setDetailInvoiceId(invoice.id); setDetailSheetOpen(true); }}>
                           <FileText className="mr-1 h-4 w-4" /> Ver
@@ -241,7 +236,7 @@ export default function InvoicesPage() {
                           <TableCell>{invoice.customer?.name || 'Cliente General'}</TableCell>
                           <TableCell>{formatDate(invoice.createdAt)}</TableCell>
                           <TableCell className="font-semibold">
-                            {formatCurrency(Number(invoice.totalAmount))}
+                            {formatForDisplay(Number(invoice.totalAmount))}
                           </TableCell>
                           <TableCell>
                             <span

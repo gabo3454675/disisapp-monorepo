@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Search, Loader2, CreditCard, DollarSign, Download, AlertCircle } from 'lucide-react';
 import apiClient from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
+import { useDisplayCurrency } from '@/hooks/useDisplayCurrency';
 import { useExchangeRate } from '@/hooks/useExchangeRate';
 import { usePermission } from '@/hooks/usePermission';
 import {
@@ -157,8 +158,7 @@ export default function CreditsPage() {
     }
   };
 
-  const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat('es-VE', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(amount);
+  const { formatForDisplay } = useDisplayCurrency();
 
   const formatDate = (s: string) =>
     new Date(s).toLocaleDateString('es-VE', { dateStyle: 'short', timeStyle: 'short' });
@@ -213,11 +213,11 @@ export default function CreditsPage() {
                       <div className="flex justify-between items-center">
                         <span className="font-medium">{c.customer.name}</span>
                         <span className="text-sm font-semibold text-primary">
-                          {formatCurrency(Number(c.currentBalance))} deuda
+                          {formatForDisplay(Number(c.currentBalance))} deuda
                         </span>
                       </div>
                       <div className="text-xs text-muted-foreground mt-1">
-                        Límite: {formatCurrency(Number(c.limitAmount))}
+                        Límite: {formatForDisplay(Number(c.limitAmount))}
                         {c.status !== 'ACTIVE' && (
                           <span className="text-destructive ml-2">Suspendido</span>
                         )}
@@ -235,7 +235,7 @@ export default function CreditsPage() {
             <CardTitle>Detalle y abonos</CardTitle>
             <CardDescription>
               {selectedCredit
-                ? `${selectedCredit.customer.name} · Saldo: ${formatCurrency(Number(selectedCredit.currentBalance))}`
+                ? `${selectedCredit.customer.name} · Saldo: ${formatForDisplay(Number(selectedCredit.currentBalance))}`
                 : 'Seleccione un cliente'}
             </CardDescription>
           </CardHeader>
@@ -280,7 +280,7 @@ export default function CreditsPage() {
                             <div className="text-xs text-muted-foreground">{formatDate(tx.createdAt)}</div>
                           </div>
                           <div className="text-right">
-                            <span className="font-medium">{formatCurrency(Number(tx.amountUsd))}</span>
+                            <span className="font-medium">{formatForDisplay(Number(tx.amountUsd))}</span>
                             {tx.type === 'PAYMENT' && (
                               <Button
                                 variant="link"
@@ -368,7 +368,7 @@ export default function CreditsPage() {
           <DialogHeader>
             <DialogTitle>Registrar abono</DialogTitle>
             <DialogDescription>
-              {selectedCredit?.customer.name}. Saldo actual: {selectedCredit && formatCurrency(Number(selectedCredit.currentBalance))}
+              {selectedCredit?.customer.name}. Saldo actual: {selectedCredit && formatForDisplay(Number(selectedCredit.currentBalance))}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">

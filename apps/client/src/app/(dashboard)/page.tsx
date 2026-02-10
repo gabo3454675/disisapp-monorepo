@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   BarChart,
@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { useAuthStore } from '@/store/useAuthStore';
+import { useDisplayCurrency } from '@/hooks/useDisplayCurrency';
 import MetricCard from '@/components/metric-card';
 import NotificationsSection from '@/components/notifications-section';
 import { RateConfigModal } from '@/components/rate-config-modal';
@@ -44,16 +45,6 @@ interface DashboardSummary {
     createdAt: string;
   }[];
 }
-
-const formatCurrency = (amount: number, currency: 'USD' | 'VES' = 'USD') => {
-  return new Intl.NumberFormat('es-VE', {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: 2,
-  }).format(amount);
-};
-
-const formatCurrencyBs = (amount: number) => formatCurrency(amount, 'VES');
 
 const formatDate = (dateString: string) => {
   try {
@@ -221,6 +212,14 @@ export default function DashboardPage() {
   const [taskCategoryFilter, setTaskCategoryFilter] = useState<string>('');
 
   const canSeeCreatedByMe = isSuperAdmin || isAdmin || isManager;
+  const { formatForDisplay, displayCurrency } = useDisplayCurrency();
+
+  const impuestosHealth = useMemo(() => {
+    const igtfUsd = health.totalImpuestosAcumulados;
+    const ivaUsd = (igtfUsd / 0.03) * 0.16;
+    const base = displayCurrency === 'BS' ? ivaUsd : igtfUsd;
+    return { value: base, sparkline: [base * 0.5, base * 0.7, base * 0.85, base, base * 1.05, base] };
+  }, [health.totalImpuestosAcumulados, displayCurrency]);
 
   const currentOrg = getCurrentOrganization();
   const orgWithRate = currentOrg && 'rateUpdatedAt' in currentOrg ? currentOrg : null;
@@ -451,7 +450,7 @@ export default function DashboardPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6 md:mb-8">
             <MetricCard
               title="Ventas de Hoy"
-              value={formatCurrency(summary.totalSalesToday)}
+              value={formatForDisplay(summary.totalSalesToday)}
               change="+0%"
               changeType={summary.totalSalesToday > 0 ? 'positive' : 'negative'}
               icon={TrendingUp}
@@ -640,11 +639,11 @@ export default function DashboardPage() {
                 </p>
               </div>
 
-              {/* KPI Cards: Ticket promedio, Crecimiento mensual, Total impuestos */}
+              {/* KPI Cards: Venta promedio por factura, Crecimiento mensual, Total impuestos (IVA/IGTF según moneda) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                 <MetricCard
-                  title="Ticket promedio"
-                  value={loadingHealth ? '—' : formatCurrency(health.ticketPromedio)}
+                  title="Venta promedio por factura"
+                  value={loadingHealth ? '—' : formatForDisplay(health.ticketPromedio)}
                   change={health.crecimientoMensual >= 0 ? `+${health.crecimientoMensual}%` : `${health.crecimientoMensual}%`}
                   changeType={health.crecimientoMensual >= 0 ? 'positive' : 'negative'}
                   icon={Receipt}
@@ -659,12 +658,12 @@ export default function DashboardPage() {
                   sparklineData={[0, Math.max(0, health.crecimientoMensual * 0.3), health.crecimientoMensual * 0.6, health.crecimientoMensual, health.crecimientoMensual * 1.05, health.crecimientoMensual]}
                 />
                 <MetricCard
-                  title="Impuestos acumulados (IGTF est.)"
-                  value={loadingHealth ? '—' : formatCurrency(health.totalImpuestosAcumulados)}
-                  change="mes en curso"
+                  title={displayCurrency === 'BS' ? 'Impuestos acumulados (IVA est.)' : 'Impuestos acumulados (IGTF est.)'}
+                  value={loadingHealth ? '—' : formatForDisplay(impuestosHealth.value)}
+                  change={displayCurrency === 'BS' ? 'IVA 16% · mes en curso' : 'IGTF 3% · mes en curso'}
                   changeType="positive"
                   icon={Banknote}
-                  sparklineData={[health.totalImpuestosAcumulados * 0.5, health.totalImpuestosAcumulados * 0.7, health.totalImpuestosAcumulados * 0.85, health.totalImpuestosAcumulados, health.totalImpuestosAcumulados * 1.05, health.totalImpuestosAcumulados]}
+                  sparklineData={impuestosHealth.sparkline}
                 />
               </div>
 
@@ -746,7 +745,7 @@ export default function DashboardPage() {
                           margin={{ top: 5, right: 20, left: 0, bottom: 5 }}
                         >
                           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                          <XAxis type="number" className="text-muted-foreground" tickFormatter={(v) => formatCurrency(v)} />
+                          <XAxis type="number" className="text-muted-foreground" tickFormatter={(v) => formatForDisplay(v)} />
                           <YAxis type="category" dataKey="name" width={100} tick={{ fontSize: 11 }} />
                           <Tooltip
                             contentStyle={{
@@ -754,7 +753,7 @@ export default function DashboardPage() {
                               border: '1px solid hsl(var(--border))',
                               borderRadius: '8px',
                             }}
-                            formatter={(value: number) => [formatCurrency(value), 'Margen']}
+                            formatter={(value: number) => [formatForDisplay(value), 'Margen']}
                           />
                           <Bar dataKey="margin" name="Margen" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
                         </BarChart>
@@ -804,14 +803,14 @@ export default function DashboardPage() {
                           >
                             <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                             <XAxis dataKey="name" className="text-muted-foreground" angle={-35} textAnchor="end" interval={0} tick={{ fontSize: 10 }} />
-                            <YAxis className="text-muted-foreground" tick={{ fontSize: 11 }} tickFormatter={(v) => formatCurrency(v)} />
+                            <YAxis className="text-muted-foreground" tick={{ fontSize: 11 }} tickFormatter={(v) => formatForDisplay(v)} />
                             <Tooltip
                               contentStyle={{
                                 backgroundColor: 'hsl(var(--card))',
                                 border: '1px solid hsl(var(--border))',
                                 borderRadius: '8px',
                               }}
-                              formatter={(value: number) => [formatCurrency(value), '']}
+                              formatter={(value: number) => [formatForDisplay(value), '']}
                               labelFormatter={(_, payload) => payload?.[0]?.payload?.productName}
                             />
                             <Legend />
@@ -864,7 +863,7 @@ export default function DashboardPage() {
                             layout="vertical"
                           >
                             <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                            <XAxis type="number" className="text-muted-foreground" tickFormatter={(v) => formatCurrency(v)} />
+                            <XAxis type="number" className="text-muted-foreground" tickFormatter={(v) => formatForDisplay(v)} />
                             <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 11 }} />
                             <Tooltip
                               contentStyle={{
@@ -872,7 +871,7 @@ export default function DashboardPage() {
                                 border: '1px solid hsl(var(--border))',
                                 borderRadius: '8px',
                               }}
-                              formatter={(value: number) => [formatCurrency(value), '']}
+                              formatter={(value: number) => [formatForDisplay(value), '']}
                               labelFormatter={(_, payload) => payload?.[0]?.payload?.customerName}
                             />
                             <Legend />
@@ -927,7 +926,7 @@ export default function DashboardPage() {
                                 border: '1px solid hsl(var(--border))',
                                 borderRadius: '8px',
                               }}
-                              formatter={(value: number, name: string) => [name === 'Volumen' ? formatCurrency(value) : value, name]}
+                              formatter={(value: number, name: string) => [name === 'Volumen' ? formatForDisplay(value) : value, name]}
                               labelFormatter={(_, payload) => payload?.[0]?.payload?.customerName}
                             />
                             <Legend />
@@ -1073,7 +1072,7 @@ export default function DashboardPage() {
                           <div className="min-w-0">
                             <p className="font-medium text-foreground text-sm sm:text-base truncate">{transaction.customerName || 'Cliente'}</p>
                             <p className="text-xs sm:text-sm text-muted-foreground truncate">
-                              {formatCurrency(transaction.amount)} • {formatDate(transaction.createdAt)}
+                              {formatForDisplay(transaction.amount)} • {formatDate(transaction.createdAt)}
                             </p>
                           </div>
                         </div>

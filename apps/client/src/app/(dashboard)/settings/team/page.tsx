@@ -78,7 +78,7 @@ function getAuditActionLabel(action: string): string {
 }
 
 export default function TeamPage() {
-  const { user, selectedOrganizationId, selectedCompanyId, getCurrentOrganization, setOrganizationExchangeRate } = useAuthStore();
+  const { user, selectedOrganizationId, selectedCompanyId, getCurrentOrganization, setOrganizationConfig } = useAuthStore();
   const { canManageTeam, isSuperAdmin, isAdmin } = usePermission();
   const currentUserId = user?.id ?? 0;
   const [members, setMembers] = useState<Member[]>([]);
@@ -100,6 +100,8 @@ export default function TeamPage() {
   const [exchangeRate, setExchangeRate] = useState<string>(
     orgWithRate?.exchangeRate != null ? String(orgWithRate.exchangeRate) : '1'
   );
+  const [currencyCode, setCurrencyCode] = useState<string>(orgWithRate?.currencyCode ?? 'USD');
+  const [currencySymbol, setCurrencySymbol] = useState<string>(orgWithRate?.currencySymbol ?? '$');
   const [savingRate, setSavingRate] = useState(false);
   const [updatingRoleMemberId, setUpdatingRoleMemberId] = useState<number | null>(null);
   const [deactivatingMemberId, setDeactivatingMemberId] = useState<number | null>(null);
@@ -155,10 +157,10 @@ export default function TeamPage() {
   }, [canViewAuditLog, fetchAuditLog]);
 
   useEffect(() => {
-    if (orgWithRate?.exchangeRate != null) {
-      setExchangeRate(String(orgWithRate.exchangeRate));
-    }
-  }, [orgWithRate?.exchangeRate]);
+    if (orgWithRate?.exchangeRate != null) setExchangeRate(String(orgWithRate.exchangeRate));
+    if (orgWithRate?.currencyCode != null) setCurrencyCode(orgWithRate.currencyCode);
+    if (orgWithRate?.currencySymbol != null) setCurrencySymbol(orgWithRate.currencySymbol);
+  }, [orgWithRate?.exchangeRate, orgWithRate?.currencyCode, orgWithRate?.currencySymbol]);
 
   const handleSaveExchangeRate = async () => {
     if (!organizationId) return;
@@ -169,15 +171,25 @@ export default function TeamPage() {
     }
     setSavingRate(true);
     try {
-      const { data } = await apiClient.patch<{ exchangeRate: number; rateUpdatedAt?: string | null }>('/tenants/organization', { exchangeRate: num });
-      setOrganizationExchangeRate(organizationId, data.exchangeRate, data.rateUpdatedAt ?? undefined);
+      const payload: { exchangeRate: number; currencyCode?: string; currencySymbol?: string } = { exchangeRate: num };
+      if (currencyCode?.trim()) payload.currencyCode = currencyCode.trim();
+      if (currencySymbol?.trim()) payload.currencySymbol = currencySymbol.trim();
+      const { data } = await apiClient.patch<{ exchangeRate: number; rateUpdatedAt?: string | null; currencyCode?: string; currencySymbol?: string }>('/tenants/organization', payload);
+      setOrganizationConfig(organizationId, {
+        exchangeRate: data.exchangeRate,
+        rateUpdatedAt: data.rateUpdatedAt ?? undefined,
+        currencyCode: data.currencyCode,
+        currencySymbol: data.currencySymbol,
+      });
       setExchangeRate(String(data.exchangeRate));
-      toast.success('Tasa actualizada', {
-        description: 'Tasa actualizada para toda la organización. Se reflejará en Facturación, Dashboard y Gastos.',
+      if (data.currencyCode != null) setCurrencyCode(data.currencyCode);
+      if (data.currencySymbol != null) setCurrencySymbol(data.currencySymbol);
+      toast.success('Configuración actualizada', {
+        description: 'Tasa y moneda actualizadas para toda la organización.',
       });
     } catch (err: any) {
-      const msg = err?.response?.data?.message || err?.message || 'Error al guardar la tasa';
-      toast.error('Error al guardar la tasa', { description: msg });
+      const msg = err?.response?.data?.message || err?.message || 'Error al guardar';
+      toast.error('Error al guardar', { description: msg });
     } finally {
       setSavingRate(false);
     }
@@ -467,9 +479,31 @@ export default function TeamPage() {
                   onChange={(e) => setExchangeRate(e.target.value)}
                 />
               </div>
+              <div className="space-y-2 min-w-[100px]">
+                <Label htmlFor="currencyCode">Código moneda</Label>
+                <Input
+                  id="currencyCode"
+                  type="text"
+                  placeholder="USD"
+                  maxLength={10}
+                  value={currencyCode}
+                  onChange={(e) => setCurrencyCode(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2 min-w-[100px]">
+                <Label htmlFor="currencySymbol">Símbolo</Label>
+                <Input
+                  id="currencySymbol"
+                  type="text"
+                  placeholder="$"
+                  maxLength={10}
+                  value={currencySymbol}
+                  onChange={(e) => setCurrencySymbol(e.target.value)}
+                />
+              </div>
               <Button onClick={handleSaveExchangeRate} disabled={savingRate}>
                 {savingRate ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                {savingRate ? ' Guardando...' : 'Guardar tasa'}
+                {savingRate ? ' Guardando...' : 'Guardar'}
               </Button>
             </CardContent>
           </Card>

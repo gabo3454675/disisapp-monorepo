@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/useAuthStore';
 import Sidebar from '@/components/sidebar';
 import BottomNav from '@/components/bottom-nav';
 import { ExchangeRateIndicator } from '@/components/exchange-rate-indicator';
+import { DisplayCurrencyToggle } from '@/components/display-currency-toggle';
 import { TasksNotificationBell } from '@/components/tasks-notification-bell';
 import { RateConfigModal } from '@/components/rate-config-modal';
 import { PermissionDebug } from '@/components/permission-debug';
@@ -111,9 +112,10 @@ export default function DashboardLayout({
       {/* Main Content */}
       <main className="flex-1 flex flex-col pb-24 lg:pb-0 min-w-0 overflow-x-hidden">
         {/* Header: indicador de tasa + campanita de tareas */}
-        <header className="sticky top-0 z-10 flex shrink-0 items-center justify-end gap-2 border-b border-border bg-background/95 px-3 py-2 sm:px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <header className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3 border-b border-border bg-background/95 px-3 py-2 sm:px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80">
           <TasksNotificationBell />
-          <ExchangeRateIndicator onOpenConfig={() => setRateConfigModalOpen(true)} />
+          <DisplayCurrencyToggle className="shrink-0" short />
+          <ExchangeRateIndicator onOpenConfig={() => setRateConfigModalOpen(true)} className="shrink-0" />
         </header>
         <div className="flex-1 min-w-0 overflow-x-hidden">{children}</div>
       </main>

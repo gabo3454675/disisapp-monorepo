@@ -16,6 +16,8 @@ export interface Organization {
   slug: string;
   plan: string;
   role: string;
+  currencyCode?: string;
+  currencySymbol?: string;
   exchangeRate?: number;
   /** ISO date string; última actualización de la tasa (para tarea "Actualizar Tasa del Día") */
   rateUpdatedAt?: string | null;
@@ -47,6 +49,8 @@ interface AuthState {
   hasOrganizations: () => boolean;
   getOrganizations: () => Organization[];
   setOrganizationExchangeRate: (organizationId: number, exchangeRate: number, rateUpdatedAt?: string | null) => void;
+  /** Actualiza la configuración de moneda/tasa de la organización en el store (tras guardar en backend). */
+  setOrganizationConfig: (organizationId: number, config: { exchangeRate?: number; rateUpdatedAt?: string | null; currencyCode?: string; currencySymbol?: string }) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -227,6 +231,9 @@ export const useAuthStore = create<AuthState>()(
           slug: c.name.toLowerCase().replace(/\s+/g, '-'),
           plan: 'FREE',
           role: c.role,
+          currencyCode: 'USD',
+          currencySymbol: '$',
+          exchangeRate: 1,
         }));
       },
       setOrganizationExchangeRate: (organizationId: number, exchangeRate: number, rateUpdatedAt?: string | null) => {
@@ -235,6 +242,15 @@ export const useAuthStore = create<AuthState>()(
         if (!orgs) return;
         const updated = orgs.map((o) =>
           o.id === organizationId ? { ...o, exchangeRate, ...(rateUpdatedAt !== undefined && { rateUpdatedAt }) } : o
+        );
+        set({ user: state.user ? { ...state.user, organizations: updated } : null });
+      },
+      setOrganizationConfig: (organizationId: number, config: { exchangeRate?: number; rateUpdatedAt?: string | null; currencyCode?: string; currencySymbol?: string }) => {
+        const state = get();
+        const orgs = state.user?.organizations;
+        if (!orgs) return;
+        const updated = orgs.map((o) =>
+          o.id === organizationId ? { ...o, ...config } : o
         );
         set({ user: state.user ? { ...state.user, organizations: updated } : null });
       },

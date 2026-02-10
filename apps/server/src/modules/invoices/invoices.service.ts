@@ -439,6 +439,16 @@ export class InvoicesService {
 
   async generatePDF(id: number, organizationId: number): Promise<Buffer> {
     const invoice = await this.findOne(id, organizationId);
+    const orgId = invoice.organizationId ?? organizationId;
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { exchangeRate: true, currencyCode: true, currencySymbol: true },
+    });
+    const currencySymbol = org?.currencySymbol ?? '$';
+    const currencyCode = org?.currencyCode ?? 'USD';
+    const exchangeRate = Number(org?.exchangeRate ?? 1);
+
+    const formatMoney = (value: number) => `${currencySymbol} ${value.toFixed(2)}`;
 
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({ margin: 50 });
@@ -625,8 +635,8 @@ export class InvoicesService {
 
         const productName = item.product.name;
         const quantity = item.quantity.toString();
-        const unitPrice = Number(item.unitPrice).toFixed(2);
-        const subtotal = Number(item.subtotal).toFixed(2);
+        const unitPrice = formatMoney(Number(item.unitPrice));
+        const subtotal = formatMoney(Number(item.subtotal));
 
         doc
           .fontSize(9)
@@ -649,10 +659,10 @@ export class InvoicesService {
 
       currentY += 20;
 
-      // Totales
-      const subtotal = Number(invoice.totalAmount);
-      const tax = 0; // Sin impuestos por ahora
-      const total = subtotal + tax;
+      // Totales (moneda del tenant)
+      const subtotalVal = Number(invoice.totalAmount);
+      const tax = 0; // IVA/IGTF según tenant si se almacenan en factura en el futuro
+      const totalVal = subtotalVal + tax;
 
       const totalsX = 350;
 
@@ -660,7 +670,7 @@ export class InvoicesService {
         .fontSize(10)
         .fillColor(textColor)
         .text('Subtotal:', totalsX, currentY, { width: 100, align: 'right' })
-        .text(subtotal.toFixed(2), 450, currentY, { width: 100, align: 'right' });
+        .text(formatMoney(subtotalVal), 450, currentY, { width: 100, align: 'right' });
 
       currentY += 15;
 
@@ -668,7 +678,7 @@ export class InvoicesService {
         .fontSize(10)
         .fillColor(textColor)
         .text('Impuestos:', totalsX, currentY, { width: 100, align: 'right' })
-        .text(tax.toFixed(2), 450, currentY, { width: 100, align: 'right' });
+        .text(formatMoney(tax), 450, currentY, { width: 100, align: 'right' });
 
       currentY += 20;
 
@@ -687,9 +697,9 @@ export class InvoicesService {
         .fillColor(primaryColor)
         .font('Helvetica-Bold')
         .text('TOTAL:', totalsX, currentY, { width: 100, align: 'right' })
-        .text(total.toFixed(2), 450, currentY, { width: 100, align: 'right' });
+        .text(formatMoney(totalVal), 450, currentY, { width: 100, align: 'right' });
 
-      // Pie de página
+      // Pie de página (incluye tasa del tenant si aplica)
       const footerY = 750;
       doc
         .fontSize(10)
@@ -697,21 +707,20 @@ export class InvoicesService {
         .font('Helvetica')
         .text('Gracias por su compra', 50, footerY, { align: 'center', width: 500 });
 
+      let footerText = `Generado el ${new Date().toLocaleDateString('es-VE', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })}`;
+      if (currencyCode === 'USD' && exchangeRate !== 1) {
+        footerText += ` · Tasa: 1 USD = ${exchangeRate.toFixed(2)} Bs.`;
+      }
       doc
         .fontSize(8)
         .fillColor('#9ca3af')
-        .text(
-          `Generado el ${new Date().toLocaleDateString('es-VE', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-          })}`,
-          50,
-          footerY + 15,
-          { align: 'center', width: 500 },
-        );
+        .text(footerText, 50, footerY + 15, { align: 'center', width: 500 });
 
       doc.end();
       } catch (err) {

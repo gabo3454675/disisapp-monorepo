@@ -20,3 +20,32 @@ export function useExchangeRate(): number {
     return 1;
   }, [user, selectedOrganizationId, selectedCompanyId]);
 }
+
+export interface TenantCurrency {
+  exchangeRate: number;
+  currencyCode: string;
+  currencySymbol: string;
+}
+
+/**
+ * Moneda del tenant activo (organización seleccionada).
+ * Usar para formatear precios, totales y cálculos de IVA/IGTF según la organización.
+ */
+export function useTenantCurrency(): TenantCurrency {
+  const user = useAuthStore((state) => state.user);
+  const selectedOrganizationId = useAuthStore((state) => state.selectedOrganizationId);
+  const selectedCompanyId = useAuthStore((state) => state.selectedCompanyId);
+
+  return useMemo(() => {
+    const orgId = selectedOrganizationId || selectedCompanyId;
+    const defaultCurrency: TenantCurrency = { exchangeRate: 1, currencyCode: 'USD', currencySymbol: '$' };
+    if (!orgId || !user?.organizations?.length) return defaultCurrency;
+    const org = user.organizations.find((o) => o.id === orgId);
+    if (!org) return defaultCurrency;
+    return {
+      exchangeRate: org?.exchangeRate != null ? Number(org.exchangeRate) : 1,
+      currencyCode: org?.currencyCode ?? 'USD',
+      currencySymbol: org?.currencySymbol ?? '$',
+    };
+  }, [user, selectedOrganizationId, selectedCompanyId]);
+}

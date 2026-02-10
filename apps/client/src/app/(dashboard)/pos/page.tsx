@@ -57,7 +57,8 @@ interface CartItem {
 
 export default function POSPage() {
   const { selectedCompanyId } = useAuthStore();
-  const tasaBcv = useExchangeRate(); // Tasa del día (BCV/Paralelo) para conversión USD ↔ BS
+  const rawRate = useExchangeRate();
+  const tasaBcv = Number.isFinite(rawRate) && rawRate > 0 ? rawRate : 1;
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);

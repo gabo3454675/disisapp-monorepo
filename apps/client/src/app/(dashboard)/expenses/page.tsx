@@ -30,6 +30,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Plus, Edit, Trash2, Search, Loader2, DollarSign, TrendingDown, Package, Briefcase } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import apiClient from '@/lib/api';
+import { useDisplayCurrency } from '@/hooks/useDisplayCurrency';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useDebounce } from '@/hooks/useDebounce';
 import { usePermission } from '@/hooks/usePermission';
@@ -104,6 +105,7 @@ export default function ExpensesPage() {
   const [activeTab, setActiveTab] = useState('expenses');
 
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
+  const { formatForDisplay } = useDisplayCurrency();
 
   const [expenseFormData, setExpenseFormData] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -359,13 +361,6 @@ export default function ExpensesPage() {
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('es-VE', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-    }).format(amount);
-  };
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('es-VE', {
@@ -408,7 +403,7 @@ export default function ExpensesPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {stats ? formatCurrency(stats.totalMonth) : '$0.00'}
+                {stats ? formatForDisplay(stats.totalMonth) : formatForDisplay(0)}
               </div>
             </CardContent>
           </Card>
@@ -420,7 +415,7 @@ export default function ExpensesPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {stats ? formatCurrency(stats.inventoryTotal) : '$0.00'}
+                {stats ? formatForDisplay(stats.inventoryTotal) : formatForDisplay(0)}
               </div>
             </CardContent>
           </Card>
@@ -432,7 +427,7 @@ export default function ExpensesPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {stats ? formatCurrency(stats.operationalTotal) : '$0.00'}
+                {stats ? formatForDisplay(stats.operationalTotal) : formatForDisplay(0)}
               </div>
             </CardContent>
           </Card>
@@ -440,7 +435,7 @@ export default function ExpensesPage() {
 
         {/* Gráficos (Lazy Loaded) */}
         {stats && stats.categoryBreakdown.length > 0 && (
-          <ExpenseCharts categoryBreakdown={stats.categoryBreakdown} formatCurrency={formatCurrency} />
+          <ExpenseCharts categoryBreakdown={stats.categoryBreakdown} formatCurrency={formatForDisplay} />
         )}
 
         {/* Tabs para Gastos y Proveedores */}
@@ -499,7 +494,7 @@ export default function ExpensesPage() {
                             <TableCell className="max-w-xs truncate">{expense.description}</TableCell>
                             <TableCell>{expense.referenceNumber || '-'}</TableCell>
                             <TableCell className="font-semibold">
-                              {formatCurrency(expense.amount)}
+                              {formatForDisplay(expense.amount)}
                             </TableCell>
                             <TableCell>
                               <span

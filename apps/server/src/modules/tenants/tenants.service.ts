@@ -32,6 +32,8 @@ export class TenantsService {
         nombre: true,
         slug: true,
         plan: true,
+        currencyCode: true,
+        currencySymbol: true,
         exchangeRate: true,
         rateUpdatedAt: true,
       },
@@ -44,6 +46,8 @@ export class TenantsService {
       name: org.nombre,
       slug: org.slug,
       plan: org.plan,
+      currencyCode: org.currencyCode ?? 'USD',
+      currencySymbol: org.currencySymbol ?? '$',
       exchangeRate: org.exchangeRate ?? 1,
       rateUpdatedAt: org.rateUpdatedAt ?? null,
     };
@@ -58,11 +62,13 @@ export class TenantsService {
     dto: UpdateOrganizationDto,
     actorUserId: number,
   ) {
-    const data: { exchangeRate?: number; rateUpdatedAt?: Date } = {};
+    const data: { exchangeRate?: number; rateUpdatedAt?: Date; currencyCode?: string; currencySymbol?: string } = {};
     if (dto.exchangeRate !== undefined) {
       data.exchangeRate = dto.exchangeRate;
       data.rateUpdatedAt = new Date();
     }
+    if (dto.currencyCode !== undefined) data.currencyCode = dto.currencyCode;
+    if (dto.currencySymbol !== undefined) data.currencySymbol = dto.currencySymbol;
     if (Object.keys(data).length === 0) {
       return this.getOrganization(organizationId);
     }
@@ -78,23 +84,25 @@ export class TenantsService {
       data,
     });
 
-    const actor = await this.prisma.user.findUnique({
-      where: { id: actorUserId },
-      select: { email: true },
-    });
-    await this.prisma.auditLog.create({
-      data: {
-        organizationId,
-        userId: actorUserId,
-        action: 'EXCHANGE_RATE_UPDATE',
-        entityType: 'organization',
-        entityId: String(organizationId),
-        oldValue: oldRate != null ? { exchangeRate: oldRate } : undefined,
-        newValue: { exchangeRate: dto.exchangeRate },
-        actorEmail: actor?.email ?? undefined,
-        targetSummary: `Tasa BCV: ${oldRate ?? '—'} → ${dto.exchangeRate}`,
-      },
-    });
+    if (dto.exchangeRate !== undefined) {
+      const actor = await this.prisma.user.findUnique({
+        where: { id: actorUserId },
+        select: { email: true },
+      });
+      await this.prisma.auditLog.create({
+        data: {
+          organizationId,
+          userId: actorUserId,
+          action: 'EXCHANGE_RATE_UPDATE',
+          entityType: 'organization',
+          entityId: String(organizationId),
+          oldValue: oldRate != null ? { exchangeRate: oldRate } : undefined,
+          newValue: { exchangeRate: dto.exchangeRate },
+          actorEmail: actor?.email ?? undefined,
+          targetSummary: `Tasa BCV: ${oldRate ?? '—'} → ${dto.exchangeRate}`,
+        },
+      });
+    }
 
     return this.getOrganization(organizationId);
   }

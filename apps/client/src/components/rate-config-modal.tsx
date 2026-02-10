@@ -24,7 +24,7 @@ interface RateConfigModalProps {
 
 export function RateConfigModal({ open, onOpenChange }: RateConfigModalProps) {
   const getCurrentOrganization = useAuthStore((s) => s.getCurrentOrganization);
-  const setOrganizationExchangeRate = useAuthStore((s) => s.setOrganizationExchangeRate);
+  const setOrganizationConfig = useAuthStore((s) => s.setOrganizationConfig);
   const organizationId = useAuthStore((s) => s.selectedOrganizationId ?? s.selectedCompanyId);
   const currentOrg = getCurrentOrganization();
   const orgWithRate = currentOrg && 'exchangeRate' in currentOrg ? currentOrg : null;
@@ -47,11 +47,16 @@ export function RateConfigModal({ open, onOpenChange }: RateConfigModalProps) {
     }
     setSaving(true);
     try {
-      const { data } = await apiClient.patch<{ exchangeRate: number; rateUpdatedAt?: string | null }>(
+      const { data } = await apiClient.patch<{ exchangeRate: number; rateUpdatedAt?: string | null; currencyCode?: string; currencySymbol?: string }>(
         '/tenants/organization',
         { exchangeRate: num }
       );
-      setOrganizationExchangeRate(organizationId, data.exchangeRate, data.rateUpdatedAt ?? undefined);
+      setOrganizationConfig(organizationId, {
+        exchangeRate: data.exchangeRate,
+        rateUpdatedAt: data.rateUpdatedAt ?? undefined,
+        currencyCode: data.currencyCode,
+        currencySymbol: data.currencySymbol,
+      });
       setExchangeRate(String(data.exchangeRate));
       toast.success('Tasa actualizada', {
         description: 'Tasa actualizada para toda la organización.',
