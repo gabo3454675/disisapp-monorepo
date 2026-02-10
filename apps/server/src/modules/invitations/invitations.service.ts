@@ -26,7 +26,7 @@ export class InvitationsService {
     invitedBy: number,
   ) {
     // Validar que el invitador tiene permisos (SUPER_ADMIN o ADMIN)
-    const inviterMembership = await this.prisma.member.findFirst({
+    let inviterMembership = await this.prisma.member.findFirst({
       where: {
         userId: invitedBy,
         organizationId: organizationId,
@@ -34,13 +34,23 @@ export class InvitationsService {
       },
     });
 
-    if (!inviterMembership) {
-      throw new ForbiddenException(
-        'No tienes acceso a esta organización',
-      );
+    // Super Admin del sistema puede invitar en cualquier org aunque no sea miembro
+    let inviterRole: string;
+    if (inviterMembership) {
+      inviterRole = String(inviterMembership.role).toUpperCase();
+    } else {
+      const inviterUser = await this.prisma.user.findUnique({
+        where: { id: invitedBy },
+        select: { isSuperAdmin: true },
+      });
+      if (inviterUser?.isSuperAdmin) {
+        inviterRole = ROLES.SUPER_ADMIN;
+      } else {
+        throw new ForbiddenException(
+          'No tienes acceso a esta organización',
+        );
+      }
     }
-
-    const inviterRole = String(inviterMembership.role).toUpperCase();
     const perms = getPermissions(inviterRole);
     if (!perms.canManageUsers) {
       throw new ForbiddenException(
@@ -157,7 +167,7 @@ export class InvitationsService {
     organizationId: number,
     invitedBy: number,
   ) {
-    const inviterMembership = await this.prisma.member.findFirst({
+    let inviterMembership = await this.prisma.member.findFirst({
       where: {
         userId: invitedBy,
         organizationId,
@@ -165,11 +175,21 @@ export class InvitationsService {
       },
     });
 
-    if (!inviterMembership) {
-      throw new ForbiddenException('No tienes acceso a esta organización');
+    let inviterRole: string;
+    if (inviterMembership) {
+      inviterRole = String(inviterMembership.role).toUpperCase();
+    } else {
+      const inviterUser = await this.prisma.user.findUnique({
+        where: { id: invitedBy },
+        select: { isSuperAdmin: true },
+      });
+      if (inviterUser?.isSuperAdmin) {
+        inviterRole = ROLES.SUPER_ADMIN;
+      } else {
+        throw new ForbiddenException('No tienes acceso a esta organización');
+      }
     }
 
-    const inviterRole = String(inviterMembership.role).toUpperCase();
     const perms = getPermissions(inviterRole);
     if (!perms.canManageUsers) {
       throw new ForbiddenException(
@@ -419,7 +439,6 @@ export class InvitationsService {
    * Obtiene todas las invitaciones de una organización
    */
   async getOrganizationInvitations(organizationId: number, userId: number) {
-    // Validar permisos
     const membership = await this.prisma.member.findFirst({
       where: {
         userId: userId,
@@ -428,7 +447,12 @@ export class InvitationsService {
       },
     });
 
-    if (!membership || !getPermissions(membership.role).canManageUsers) {
+    const role = membership
+      ? String(membership.role).toUpperCase()
+      : (await this.prisma.user.findUnique({ where: { id: userId }, select: { isSuperAdmin: true } }))?.isSuperAdmin
+        ? ROLES.SUPER_ADMIN
+        : null;
+    if (!role || !getPermissions(role).canManageUsers) {
       throw new ForbiddenException(
         'Solo los SUPER_ADMIN y ADMIN pueden ver las invitaciones',
       );
