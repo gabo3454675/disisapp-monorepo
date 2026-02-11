@@ -38,9 +38,12 @@ export class AuthService {
       throw new UnauthorizedException('Cuenta desactivada. Contacte al administrador.');
     }
 
-    // Password Reset Required: usuario provisionado con clave temporal
+    // Password Reset Required: usuario provisionado con clave temporal (incluir email para prellenar en front)
     if (user.requiresPasswordChange === true) {
-      throw new ForbiddenException('RESET_REQUIRED');
+      throw new ForbiddenException({
+        message: 'RESET_REQUIRED',
+        email: user.email,
+      });
     }
 
     const isSuperAdmin = user.isSuperAdmin ?? false;

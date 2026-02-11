@@ -75,6 +75,20 @@ export default function ProductsPage() {
 
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
+  if (!canManageProducts) {
+    return (
+      <div className="p-4 md:p-8 max-w-7xl mx-auto">
+        <Card>
+          <CardContent className="py-12 text-center">
+            <p className="text-muted-foreground">
+              No tienes permisos para acceder a esta sección.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   const handleDownloadInventoryTemplate = useCallback(async () => {
     try {
       const response = await apiClient.get('/inventory/template', {

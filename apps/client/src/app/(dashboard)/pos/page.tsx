@@ -8,6 +8,8 @@ import { Label } from '@/components/ui/label';
 import { ShoppingCart, Plus, Minus, Trash2, Search, Package, CheckCircle2, Loader2, Printer } from 'lucide-react';
 import apiClient from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
+import { usePermission } from '@/hooks/usePermission';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useExchangeRate } from '@/hooks/useExchangeRate';
@@ -57,6 +59,7 @@ interface CartItem {
 
 export default function POSPage() {
   const { selectedCompanyId } = useAuthStore();
+  const { canManageCustomers } = usePermission();
   const rawRate = useExchangeRate();
   const tasaBcv = Number.isFinite(rawRate) && rawRate > 0 ? rawRate : 1;
   const [products, setProducts] = useState<Product[]>([]);
@@ -298,6 +301,20 @@ export default function POSPage() {
       minimumFractionDigits: 2,
     }).format(amount);
   };
+
+  if (!canManageCustomers) {
+    return (
+      <div className="p-4 md:p-8 max-w-7xl mx-auto">
+        <Card>
+          <CardContent className="py-12 text-center">
+            <p className="text-muted-foreground">
+              No tienes permisos para acceder a esta sección.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto h-full flex flex-col">

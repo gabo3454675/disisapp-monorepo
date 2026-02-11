@@ -98,6 +98,20 @@ export default function CreditsPage() {
     c.customer.name.toLowerCase().includes(search.toLowerCase())
   );
 
+  if (!canManageCustomers) {
+    return (
+      <div className="p-4 md:p-8 max-w-7xl mx-auto">
+        <Card>
+          <CardContent className="py-12 text-center">
+            <p className="text-muted-foreground">
+              No tienes permisos para acceder a esta sección.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   const handleOpenPayment = () => {
     if (!selectedCredit) return;
     const balance = Number(selectedCredit.currentBalance);

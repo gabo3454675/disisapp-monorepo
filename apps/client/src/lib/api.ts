@@ -87,19 +87,17 @@ apiClient.interceptors.response.use(
 
       // Error 403 RESET_REQUIRED: Usuario con clave temporal debe cambiarla
       if (error.response?.status === 403) {
-        const message = (error.response?.data as any)?.message;
+        const data = error.response?.data as { message?: string; email?: string } | undefined;
+        const message = typeof data?.message === 'string' ? data.message : '';
         if (message === 'RESET_REQUIRED') {
           let userEmail = '';
           try {
-            // Prioridad 1: email del body de la request (login)
-            const reqData = error.config?.data;
-            if (typeof reqData === 'string') {
-              const parsed = JSON.parse(reqData);
+            // Prioridad 1: email en la respuesta del backend
+            if (data?.email) userEmail = data.email;
+            // Prioridad 2: email del body de la request (login)
+            if (!userEmail && typeof error.config?.data === 'string') {
+              const parsed = JSON.parse(error.config.data) as { email?: string };
               if (parsed?.email) userEmail = parsed.email;
-            }
-            // Prioridad 2: email en la respuesta del backend (si lo incluye)
-            if (!userEmail && (error.response?.data as any)?.email) {
-              userEmail = (error.response?.data as any).email;
             }
           } catch {
             // ignored
@@ -110,7 +108,7 @@ apiClient.interceptors.response.use(
           window.location.href = url;
           return Promise.reject(error);
         }
-        if (message?.includes('organización') || message?.includes('membresía')) {
+        if (typeof message === 'string' && (message.includes('organización') || message.includes('membresía'))) {
           console.error('Acceso denegado a la organización seleccionada');
         }
       }

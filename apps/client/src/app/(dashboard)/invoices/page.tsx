@@ -17,6 +17,7 @@ import { InvoiceDetailSheet } from '@/components/invoice-detail-sheet';
 import { AssignTaskModal } from '@/components/assign-task-modal';
 import apiClient from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
+import { usePermission } from '@/hooks/usePermission';
 import { useDisplayCurrency } from '@/hooks/useDisplayCurrency';
 
 interface InvoiceItem {
@@ -48,6 +49,7 @@ interface Invoice {
 
 export default function InvoicesPage() {
   const { selectedCompanyId, user } = useAuthStore();
+  const { canManageCustomers } = usePermission();
   const isSuperAdmin = !!user?.isSuperAdmin;
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -75,6 +77,20 @@ export default function InvoicesPage() {
   useEffect(() => {
     fetchInvoices();
   }, [fetchInvoices]);
+
+  if (!canManageCustomers) {
+    return (
+      <div className="p-4 md:p-8 max-w-7xl mx-auto">
+        <Card>
+          <CardContent className="py-12 text-center">
+            <p className="text-muted-foreground">
+              No tienes permisos para acceder a esta sección.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   const handleDeleteInvoice = async (invoiceId: number) => {
     if (!confirm('¿Eliminar esta factura? Esta acción no se puede deshacer.')) return;

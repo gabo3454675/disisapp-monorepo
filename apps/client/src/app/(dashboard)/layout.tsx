@@ -13,6 +13,7 @@ import { RateConfigModal } from '@/components/rate-config-modal';
 import { PermissionDebug } from '@/components/permission-debug';
 import { PWAInstallPrompt } from '@/components/pwa-install-prompt';
 import { useSync } from '@/hooks/useSync';
+import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 
 export default function DashboardLayout({
@@ -26,11 +27,15 @@ export default function DashboardLayout({
   const selectedOrganizationId = useAuthStore((state) => state.selectedOrganizationId);
   const selectedCompanyId = useAuthStore((state) => state.selectedCompanyId);
   const hasOrganizations = useAuthStore((state) => state.hasOrganizations());
+  const getOrganizations = useAuthStore((state) => state.getOrganizations);
   const user = useAuthStore((state) => state.user);
   const [mounted, setMounted] = useState(false);
-  
+
   // Usar organizationId o companyId como fallback
   const selectedId = selectedOrganizationId || selectedCompanyId;
+  // Super Admin sin orgs en BD: no bloquear con loading infinito
+  const orgsList = getOrganizations();
+  const isSuperAdminWithNoOrgs = user?.isSuperAdmin === true && orgsList.length === 0;
   const [rateConfigModalOpen, setRateConfigModalOpen] = useState(false);
 
   // Sincronizar facturas pendientes al volver online
@@ -106,26 +111,28 @@ export default function DashboardLayout({
         } else if (user?.companies && user.companies.length > 0) {
           useAuthStore.getState().selectCompany(user.companies[0].id);
         } else if (user?.isSuperAdmin) {
-          // Super Admin sin org seleccionada: fetch y asignar la primera disponible
+          // Super Admin sin org seleccionada: fetch y asignar la primera disponible (o dejar [] si no hay ninguna)
           apiClient.get<{ id: number; name: string; slug: string; plan: string }[]>('/tenants/organizations-all')
             .then((res) => {
               const orgs = res.data || [];
+              useAuthStore.getState().setSuperAdminOrganizations(orgs.map((o) => ({
+                id: o.id,
+                name: o.name,
+                slug: o.slug,
+                plan: o.plan,
+                role: 'SUPER_ADMIN',
+                currencyCode: 'USD',
+                currencySymbol: '$',
+                exchangeRate: 1,
+                rateUpdatedAt: null,
+              })));
               if (orgs.length > 0) {
                 useAuthStore.getState().selectOrganization(orgs[0].id);
-                useAuthStore.getState().setSuperAdminOrganizations(orgs.map((o) => ({
-                  id: o.id,
-                  name: o.name,
-                  slug: o.slug,
-                  plan: o.plan,
-                  role: 'SUPER_ADMIN',
-                  currencyCode: 'USD',
-                  currencySymbol: '$',
-                  exchangeRate: 1,
-                  rateUpdatedAt: null,
-                })));
               }
             })
-            .catch(() => {});
+            .catch(() => {
+              useAuthStore.getState().setSuperAdminOrganizations([]);
+            });
         }
       }
     }
@@ -156,8 +163,22 @@ export default function DashboardLayout({
   }
 
   // Validar que hay una organización seleccionada antes de mostrar el contenido
-  // (solo si el usuario tiene organizaciones)
   if (hasOrganizations && !selectedId) {
+    // Super Admin con 0 orgs en BD: mensaje claro en lugar de loading infinito
+    if (isSuperAdminWithNoOrgs) {
+      return (
+        <div className="flex items-center justify-center min-h-screen bg-background">
+          <div className="text-center max-w-md px-4 space-y-4">
+            <p className="text-muted-foreground">
+              No hay organizaciones en el sistema. Crea una desde Configuración para comenzar.
+            </p>
+            <Button variant="default" onClick={() => router.push('/settings')}>
+              Ir a Configuración
+            </Button>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
         <div className="text-center">

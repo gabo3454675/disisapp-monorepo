@@ -84,12 +84,15 @@ export const useAuthStore = create<AuthState>()(
         const companies = user.companies || [];
         // Default Tenant: Super Admin sin org seleccionada → asignar la primera disponible
         const defaultOrgId = organizations.length > 0 ? organizations[0].id : (companies.length > 0 ? companies[0].id : null);
+        // Super Admin: poblar superAdminOrganizations con todas las orgs para que el switcher muestre todas de inmediato
+        const superAdminOrgs = user.isSuperAdmin && organizations.length > 0 ? organizations : undefined;
         set({
           user,
           token,
           isAuthenticated: true,
           selectedOrganizationId: defaultOrgId,
           selectedCompanyId: companies.length > 0 ? companies[0].id : defaultOrgId, // Compatibilidad con dashboard/api
+          ...(superAdminOrgs && { superAdminOrganizations: superAdminOrgs }),
         });
       },
       clearAuth: () => {

@@ -47,11 +47,15 @@ export function ResetPasswordFormContent({
     e.preventDefault();
     setError('');
 
+    const emailTrimmed = email.trim();
+    if (!emailTrimmed) {
+      setError('Ingresa tu correo electrónico');
+      return;
+    }
     if (newPassword !== confirmPassword) {
       setError('Las contraseñas nuevas no coinciden');
       return;
     }
-
     if (newPassword.length < 8) {
       setError('La nueva contraseña debe tener al menos 8 caracteres');
       return;
@@ -61,7 +65,7 @@ export function ResetPasswordFormContent({
 
     try {
       const response = await apiClient.post('/auth/complete-password-reset', {
-        email,
+        email: emailTrimmed,
         currentPassword,
         newPassword,
       });
