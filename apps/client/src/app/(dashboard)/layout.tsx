@@ -94,7 +94,7 @@ export default function DashboardLayout({
 
       // requiresPasswordChange: bloquear acceso hasta actualizar clave temporal
       if (user?.requiresPasswordChange) {
-        router.push(`/auth/reset-password?email=${encodeURIComponent(user.email)}`);
+        router.push(`/reset-password?email=${encodeURIComponent(user.email)}`);
         return;
       }
 

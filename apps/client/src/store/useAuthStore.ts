@@ -73,7 +73,7 @@ export const useAuthStore = create<AuthState>()(
         // Bloquear sesión si requiere cambio de contraseña (no debería llegar aquí; backend retorna 403)
         if (user.requiresPasswordChange) {
           if (typeof window !== 'undefined') {
-            window.location.href = `/auth/reset-password?email=${encodeURIComponent(user.email)}`;
+            window.location.href = `/reset-password?email=${encodeURIComponent(user.email)}`;
           }
           return;
         }

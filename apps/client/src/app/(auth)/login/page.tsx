@@ -172,7 +172,7 @@ function LoginForm() {
               </div>
               <div>
                 <Link 
-                  href="/auth/reset-password" 
+                  href="/reset-password" 
                   className="text-sm text-muted-foreground hover:text-amber-600 dark:hover:text-amber-400 transition-colors inline-flex items-center gap-1"
                 >
                   ¿Tienes contraseña temporal? Cámbiala aquí

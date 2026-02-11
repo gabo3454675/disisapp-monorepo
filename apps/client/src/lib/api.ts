@@ -105,8 +105,8 @@ apiClient.interceptors.response.use(
             // ignored
           }
           const url = userEmail
-            ? `/auth/reset-password?email=${encodeURIComponent(userEmail)}`
-            : '/auth/reset-password';
+            ? `/reset-password?email=${encodeURIComponent(userEmail)}`
+            : '/reset-password';
           window.location.href = url;
           return Promise.reject(error);
         }
