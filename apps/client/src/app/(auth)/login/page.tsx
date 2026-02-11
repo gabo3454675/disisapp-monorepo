@@ -31,12 +31,6 @@ export default function LoginPage() {
 
       const { access_token, user } = response.data;
 
-      // Debug: Ver qué viene del backend
-      console.log('🔍 [Login] Respuesta del backend:', response.data);
-      console.log('[Login] User recibido:', user);
-      console.log('[Login] User.organizations:', user.organizations);
-      console.log('[Login] User.companies:', user.companies);
-
       // Guardar autenticación en el store
       setAuth(user, access_token);
 

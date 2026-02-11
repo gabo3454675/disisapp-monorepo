@@ -20,7 +20,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   async validate(payload: any) {
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
-      select: { isActive: true },
+      select: { isActive: true, isSuperAdmin: true },
     });
     if (!user || user.isActive === false) {
       throw new UnauthorizedException('Cuenta desactivada o no válida');
@@ -28,6 +28,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     return {
       id: payload.sub,
       email: payload.email,
+      isSuperAdmin: user.isSuperAdmin ?? false,
     };
   }
 }

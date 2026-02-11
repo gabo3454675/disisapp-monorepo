@@ -74,12 +74,14 @@ export const useAuthStore = create<AuthState>()(
         }
         const organizations = user.organizations || [];
         const companies = user.companies || [];
+        // Default Tenant: Super Admin sin org seleccionada → asignar la primera disponible
+        const defaultOrgId = organizations.length > 0 ? organizations[0].id : (companies.length > 0 ? companies[0].id : null);
         set({
           user,
           token,
           isAuthenticated: true,
-          selectedOrganizationId: organizations.length > 0 ? organizations[0].id : null,
-          selectedCompanyId: companies.length > 0 ? companies[0].id : null,
+          selectedOrganizationId: defaultOrgId,
+          selectedCompanyId: companies.length > 0 ? companies[0].id : defaultOrgId, // Compatibilidad con dashboard/api
         });
       },
       clearAuth: () => {
@@ -243,7 +245,7 @@ export const useAuthStore = create<AuthState>()(
           // Error silencioso - el store se inicializará con valores por defecto
         }
         if (state) {
-          // Forzar hidratación después de un pequeño delay para asegurar que se complete
+          // Hydration: verificar isSuperAdmin y marcar como hidratado
           setTimeout(() => {
             state.setHasHydrated(true);
           }, 0);

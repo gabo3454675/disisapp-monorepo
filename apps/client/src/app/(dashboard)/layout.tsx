@@ -99,6 +99,27 @@ export default function DashboardLayout({
           useAuthStore.getState().selectOrganization(user.organizations[0].id);
         } else if (user?.companies && user.companies.length > 0) {
           useAuthStore.getState().selectCompany(user.companies[0].id);
+        } else if (user?.isSuperAdmin) {
+          // Super Admin sin org seleccionada: fetch y asignar la primera disponible
+          apiClient.get<{ id: number; name: string; slug: string; plan: string }[]>('/tenants/organizations-all')
+            .then((res) => {
+              const orgs = res.data || [];
+              if (orgs.length > 0) {
+                useAuthStore.getState().selectOrganization(orgs[0].id);
+                useAuthStore.getState().setSuperAdminOrganizations(orgs.map((o) => ({
+                  id: o.id,
+                  name: o.name,
+                  slug: o.slug,
+                  plan: o.plan,
+                  role: 'SUPER_ADMIN',
+                  currencyCode: 'USD',
+                  currencySymbol: '$',
+                  exchangeRate: 1,
+                  rateUpdatedAt: null,
+                })));
+              }
+            })
+            .catch(() => {});
         }
       }
     }

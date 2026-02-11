@@ -539,15 +539,26 @@ export class TenantsService {
       },
     });
 
-    // Asignar al Super Admin como SUPER_ADMIN de la nueva organización
-    await this.prisma.member.create({
-      data: {
-        userId: userId,
-        organizationId: organization.id,
-        role: 'SUPER_ADMIN',
-        status: 'ACTIVE',
-      },
+    // Asignar al Super Admin como SUPER_ADMIN de la nueva organización.
+    // Usar findFirst + create para evitar Unique constraint si ya existe (p. ej. por reintento).
+    const existingMember = await this.prisma.member.findFirst({
+      where: { userId, organizationId: organization.id },
     });
+    if (!existingMember) {
+      try {
+        await this.prisma.member.create({
+          data: {
+            userId: userId,
+            organizationId: organization.id,
+            role: 'SUPER_ADMIN',
+            status: 'ACTIVE',
+          },
+        });
+      } catch (e: any) {
+        // Unique constraint: Super Admin ya es miembro, ignorar
+        if (e?.code !== 'P2002') throw e;
+      }
+    }
 
     return organization;
   }

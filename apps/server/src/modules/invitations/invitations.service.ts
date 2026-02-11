@@ -226,31 +226,59 @@ export class InvitationsService {
           'Este usuario ya es miembro activo de esta organización',
         );
       }
-      const member = await this.prisma.member.create({
-        data: {
-          userId: existingUser.id,
-          organizationId,
-          role: dto.role,
-          status: 'ACTIVE',
-        },
-        include: {
-          user: {
-            select: {
-              id: true,
-              email: true,
-              fullName: true,
-              avatarUrl: true,
+      try {
+        const member = await this.prisma.member.create({
+          data: {
+            userId: existingUser.id,
+            organizationId,
+            role: dto.role,
+            status: 'ACTIVE',
+          },
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                fullName: true,
+                avatarUrl: true,
+              },
             },
           },
-        },
-      });
-      return {
-        isNewUser: false,
-        message: 'Usuario agregado a la organización',
-        member: this.mapMemberToResponse(member),
-      };
+        });
+        return {
+          isNewUser: false,
+          message: 'Usuario agregado a la organización',
+          member: this.mapMemberToResponse(member),
+        };
+      } catch (e: any) {
+        // Unique constraint: membresía ya existe (race condition), buscar y devolver
+        if (e?.code === 'P2002') {
+          const existing = await this.prisma.member.findFirst({
+            where: { userId: existingUser.id, organizationId, status: 'ACTIVE' },
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  email: true,
+                  fullName: true,
+                  avatarUrl: true,
+                },
+              },
+            },
+          });
+          if (existing) {
+            return {
+              isNewUser: false,
+              message: 'Usuario agregado a la organización',
+              member: this.mapMemberToResponse(existing),
+            };
+          }
+        }
+        throw e;
+      }
     }
 
+    // Usuario nuevo: crear User + Member en transacción
     const tempPassword = dto.tempPassword ?? this.generateTempPassword();
     const saltRounds = 10;
     const passwordHash = await bcrypt.hash(tempPassword, saltRounds);
@@ -263,6 +291,7 @@ export class InvitationsService {
           email,
           passwordHash,
           fullName,
+          requiresPasswordChange: true, // Clave temporal, debe cambiarla al primer login
         },
       });
       const member = await tx.member.create({

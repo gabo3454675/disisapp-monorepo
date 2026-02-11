@@ -192,7 +192,8 @@ function isRateUpdatedToday(rateUpdatedAt: string | null | undefined): boolean {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { isAuthenticated, user, selectedCompanyId, _hasHydrated, getCurrentOrganization } = useAuthStore();
+  const { isAuthenticated, user, selectedOrganizationId, selectedCompanyId, _hasHydrated, getCurrentOrganization } = useAuthStore();
+  const selectedId = selectedOrganizationId || selectedCompanyId;
   const { canViewFinancialCharts, isSuperAdmin, isAdmin, isManager } = usePermission();
   const [summary, setSummary] = useState<DashboardSummary>(DEFAULT_SUMMARY);
   const [pendingTasks, setPendingTasks] = useState<PendingTask[]>([]);
@@ -241,7 +242,7 @@ export default function DashboardPage() {
   }, [_hasHydrated]);
 
   const fetchDashboardSummary = useCallback(async () => {
-    if (!selectedCompanyId) {
+    if (!selectedId) {
       setLoading(false);
       setError('No hay empresa seleccionada. Por favor, selecciona una empresa.');
       setSummary(DEFAULT_SUMMARY);
@@ -262,10 +263,10 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedCompanyId]);
+  }, [selectedId]);
 
   const fetchDashboardHealth = useCallback(async () => {
-    if (!selectedCompanyId) return;
+    if (!selectedId) return;
     try {
       setLoadingHealth(true);
       const res = await apiClient.get<DashboardHealth>('/dashboard/health');
@@ -275,7 +276,7 @@ export default function DashboardPage() {
     } finally {
       setLoadingHealth(false);
     }
-  }, [selectedCompanyId]);
+  }, [selectedId]);
 
   const fetchMyPendingTasks = useCallback(async () => {
     if (!isAuthenticated) return;
@@ -340,7 +341,7 @@ export default function DashboardPage() {
   }, [mounted, _hasHydrated, isAuthenticated, canViewFinancialCharts, fetchDashboardHealth]);
 
   const fetchDashboardDiagnosis = useCallback(async () => {
-    if (!selectedCompanyId) return;
+    if (!selectedId) return;
     try {
       setLoadingDiagnosis(true);
       const res = await apiClient.get<DashboardDiagnosis>('/dashboard/diagnosis');
@@ -359,7 +360,7 @@ export default function DashboardPage() {
   }, [mounted, _hasHydrated, isAuthenticated, canViewFinancialCharts, fetchDashboardDiagnosis]);
 
   const fetchDashboardStrategy = useCallback(async () => {
-    if (!selectedCompanyId) return;
+    if (!selectedId) return;
     try {
       setLoadingStrategy(true);
       const res = await apiClient.get<DashboardStrategy>('/dashboard/strategy');
@@ -369,7 +370,7 @@ export default function DashboardPage() {
     } finally {
       setLoadingStrategy(false);
     }
-  }, [selectedCompanyId]);
+  }, [selectedId]);
 
   useEffect(() => {
     if (mounted && _hasHydrated && isAuthenticated && canViewFinancialCharts) {

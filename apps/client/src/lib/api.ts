@@ -85,12 +85,26 @@ apiClient.interceptors.response.use(
         console.warn('No hay organización seleccionada');
       }
 
-      // Error 403: Usuario no tiene acceso a esta organización
+      // Error 403 RESET_REQUIRED: Usuario con clave temporal debe cambiarla
       if (error.response?.status === 403) {
         const message = (error.response?.data as any)?.message;
+        if (message === 'RESET_REQUIRED') {
+          let url = '/auth/reset-password';
+          try {
+            const reqData = error.config?.data;
+            if (typeof reqData === 'string') {
+              const parsed = JSON.parse(reqData);
+              if (parsed?.email) {
+                url += `?email=${encodeURIComponent(parsed.email)}`;
+              }
+            }
+          } catch {
+            // ignored
+          }
+          window.location.href = url;
+          return Promise.reject(error);
+        }
         if (message?.includes('organización') || message?.includes('membresía')) {
-          // El usuario no tiene acceso a esta organización
-          // Podríamos limpiar la selección y redirigir
           console.error('Acceso denegado a la organización seleccionada');
         }
       }

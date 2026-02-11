@@ -48,7 +48,8 @@ export default function Sidebar() {
     getOrganizations,
   } = useAuthStore();
 
-  // Super Admin: cargar todas las organizaciones y, si no hay org seleccionada, elegir la primera y recargar
+  // Hydration para Super Admin: cargar TODAS las organizaciones desde /tenants/organizations-all
+  // (no solo las vinculadas al perfil). Si no hay org seleccionada, asignar la primera.
   useEffect(() => {
     if (!user?.isSuperAdmin) return;
     apiClient
@@ -131,6 +132,7 @@ export default function Sidebar() {
   // Obtener organización/empresa actual y tasa global (reactiva al guardar en Configuración)
   const currentOrg = getCurrentOrganization();
   const organizations = getOrganizations();
+  // Super Admin: selector visible siempre que haya al menos 1 org (sin importar rol en Member)
   const hasMultipleOrganizations = organizations.length > 1 || (user?.isSuperAdmin === true && organizations.length >= 1);
   const displayRate = useExchangeRate();
 

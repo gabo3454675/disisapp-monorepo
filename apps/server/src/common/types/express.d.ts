@@ -7,6 +7,7 @@ declare global {
       user?: {
         id: number;
         email: string;
+        isSuperAdmin?: boolean;
       };
 
       // Información de Organization (inyectada por OrganizationGuard)

@@ -19,6 +19,7 @@ model User {
   avatarUrl     String?
   isSuperAdmin  Boolean         @default(false) // Solo el Super Admin puede crear organizaciones
   isActive      Boolean         @default(true)  // Cuenta desactivada = no puede iniciar sesión
+  requiresPasswordChange Boolean @default(false) // Usuario provisionado con clave temporal
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
