@@ -9,7 +9,6 @@ import { ShoppingCart, Plus, Minus, Trash2, Search, Package, CheckCircle2, Loade
 import apiClient from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePermission } from '@/hooks/usePermission';
-import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useExchangeRate } from '@/hooks/useExchangeRate';
