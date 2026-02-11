@@ -92,6 +92,12 @@ export default function DashboardLayout({
         return;
       }
 
+      // requiresPasswordChange: bloquear acceso hasta actualizar clave temporal
+      if (user?.requiresPasswordChange) {
+        router.push(`/auth/reset-password?email=${encodeURIComponent(user.email)}`);
+        return;
+      }
+
       // Validar que hay organizaciones disponibles
       if (hasOrganizations && !selectedId) {
         // Priorizar organizations sobre companies

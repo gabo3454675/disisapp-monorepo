@@ -132,8 +132,10 @@ export default function Sidebar() {
   // Obtener organización/empresa actual y tasa global (reactiva al guardar en Configuración)
   const currentOrg = getCurrentOrganization();
   const organizations = getOrganizations();
-  // Super Admin: selector visible siempre que haya al menos 1 org (sin importar rol en Member)
-  const hasMultipleOrganizations = organizations.length > 1 || (user?.isSuperAdmin === true && organizations.length >= 1);
+  // Super Admin: selector SIEMPRE visible (carga todas las orgs desde API, no solo membresías)
+  const hasMultipleOrganizations = user?.isSuperAdmin === true
+    ? true
+    : organizations.length > 1;
   const displayRate = useExchangeRate();
 
   const organizationName = currentOrg?.name || 'Mi Organización';
@@ -232,27 +234,33 @@ export default function Sidebar() {
               >
                 <DropdownMenuLabel>Seleccionar Organización</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                {organizations.map((org) => (
-                  <DropdownMenuItem
-                    key={org.id}
-                    onClick={() => handleOrganizationChange(org.id)}
-                    className="cursor-pointer min-h-[44px] py-3"
-                  >
-                    <div className="flex items-center justify-between w-full">
-                      <div className="flex flex-col">
-                        <span className="font-medium">{org.name}</span>
-                        {org.role && (
-                          <span className="text-xs text-muted-foreground">
-                            {org.role}
-                          </span>
+                {organizations.length === 0 ? (
+                  <div className="px-2 py-3 text-sm text-muted-foreground">
+                    No hay organizaciones disponibles
+                  </div>
+                ) : (
+                  organizations.map((org) => (
+                    <DropdownMenuItem
+                      key={org.id}
+                      onClick={() => handleOrganizationChange(org.id)}
+                      className="cursor-pointer min-h-[44px] py-3"
+                    >
+                      <div className="flex items-center justify-between w-full">
+                        <div className="flex flex-col">
+                          <span className="font-medium">{org.name}</span>
+                          {org.role && (
+                            <span className="text-xs text-muted-foreground">
+                              {org.role}
+                            </span>
+                          )}
+                        </div>
+                        {selectedId === org.id && (
+                          <Check className="h-4 w-4 text-primary flex-shrink-0" />
                         )}
                       </div>
-                      {selectedId === org.id && (
-                        <Check className="h-4 w-4 text-primary flex-shrink-0" />
-                      )}
-                    </div>
-                  </DropdownMenuItem>
-                ))}
+                    </DropdownMenuItem>
+                  ))
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
@@ -294,27 +302,33 @@ export default function Sidebar() {
               >
                 <DropdownMenuLabel>Seleccionar Organización</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                {organizations.map((org) => (
-                  <DropdownMenuItem
-                    key={org.id}
-                    onClick={() => handleOrganizationChange(org.id)}
-                    className="cursor-pointer min-h-[44px] py-3"
-                  >
-                    <div className="flex items-center justify-between w-full">
-                      <div className="flex flex-col">
-                        <span className="font-medium">{org.name}</span>
-                        {org.role && (
-                          <span className="text-xs text-muted-foreground">
-                            {org.role}
-                          </span>
+                {organizations.length === 0 ? (
+                  <div className="px-2 py-3 text-sm text-muted-foreground">
+                    No hay organizaciones disponibles
+                  </div>
+                ) : (
+                  organizations.map((org) => (
+                    <DropdownMenuItem
+                      key={org.id}
+                      onClick={() => handleOrganizationChange(org.id)}
+                      className="cursor-pointer min-h-[44px] py-3"
+                    >
+                      <div className="flex items-center justify-between w-full">
+                        <div className="flex flex-col">
+                          <span className="font-medium">{org.name}</span>
+                          {org.role && (
+                            <span className="text-xs text-muted-foreground">
+                              {org.role}
+                            </span>
+                          )}
+                        </div>
+                        {selectedId === org.id && (
+                          <Check className="h-4 w-4 text-primary flex-shrink-0" />
                         )}
                       </div>
-                      {selectedId === org.id && (
-                        <Check className="h-4 w-4 text-primary flex-shrink-0" />
-                      )}
-                    </div>
-                  </DropdownMenuItem>
-                ))}
+                    </DropdownMenuItem>
+                  ))
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (

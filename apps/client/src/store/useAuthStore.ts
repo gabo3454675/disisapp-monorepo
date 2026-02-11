@@ -30,6 +30,7 @@ interface User {
   email: string;
   fullName?: string | null;
   isSuperAdmin?: boolean;
+  requiresPasswordChange?: boolean; // Usuario con clave temporal debe cambiarla
   organizations?: Organization[]; // Nuevo sistema
   companies?: Company[]; // Legacy - mantener para compatibilidad
 }
@@ -69,6 +70,13 @@ export const useAuthStore = create<AuthState>()(
       superAdminOrganizations: [],
       _hasHydrated: false,
       setAuth: (user, token) => {
+        // Bloquear sesión si requiere cambio de contraseña (no debería llegar aquí; backend retorna 403)
+        if (user.requiresPasswordChange) {
+          if (typeof window !== 'undefined') {
+            window.location.href = `/auth/reset-password?email=${encodeURIComponent(user.email)}`;
+          }
+          return;
+        }
         if (typeof window !== 'undefined') {
           localStorage.setItem('auth_token', token);
         }

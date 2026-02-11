@@ -146,15 +146,25 @@ export default function LoginPage() {
               )}
             </Button>
             
-            <div className="text-center text-sm pt-2">
-              <span className="text-muted-foreground">¿No tienes cuenta? </span>
-              <Link 
-                href="/register" 
-                className="text-primary hover:text-primary/80 font-semibold hover:underline transition-colors inline-flex items-center gap-1"
-              >
-                Regístrate aquí
-                <ArrowRight className="h-3 w-3" />
-              </Link>
+            <div className="text-center text-sm pt-2 space-y-2">
+              <div>
+                <span className="text-muted-foreground">¿No tienes cuenta? </span>
+                <Link 
+                  href="/register" 
+                  className="text-primary hover:text-primary/80 font-semibold hover:underline transition-colors inline-flex items-center gap-1"
+                >
+                  Regístrate aquí
+                  <ArrowRight className="h-3 w-3" />
+                </Link>
+              </div>
+              <div>
+                <Link 
+                  href="/auth/reset-password" 
+                  className="text-sm text-muted-foreground hover:text-amber-600 dark:hover:text-amber-400 transition-colors inline-flex items-center gap-1"
+                >
+                  ¿Tienes contraseña temporal? Cámbiala aquí
+                </Link>
+              </div>
             </div>
           </form>
         </CardContent>
