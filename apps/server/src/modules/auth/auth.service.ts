@@ -191,6 +191,25 @@ export class AuthService {
       },
     });
 
+    // Auditoría: registrar cambio de contraseña (en la primera org del usuario si tiene)
+    const firstMembership = await this.prisma.member.findFirst({
+      where: { userId: user.id, status: 'ACTIVE' },
+      select: { organizationId: true },
+    });
+    if (firstMembership) {
+      await this.prisma.auditLog.create({
+        data: {
+          organizationId: firstMembership.organizationId,
+          userId: user.id,
+          action: 'PASSWORD_CHANGE',
+          entityType: 'user',
+          entityId: String(user.id),
+          actorEmail: user.email,
+          targetSummary: `Cambio de contraseña: ${user.email}`,
+        },
+      });
+    }
+
     // Validar y obtener datos completos como en login
     const validatedUser = await this.validateUser(dto.email, dto.newPassword);
 

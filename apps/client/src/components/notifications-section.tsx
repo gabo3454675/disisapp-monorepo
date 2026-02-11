@@ -15,7 +15,7 @@ interface Notification {
   description: string;
   status: 'pending' | 'urgent' | 'completed';
   time: string;
-  icon: 'clock' | 'alert' | 'check';
+  icon: 'clock' | 'alert' | 'check' | 'task';
   type: 'task' | 'invoice' | 'stock';
   task?: TaskForResolution;
 }

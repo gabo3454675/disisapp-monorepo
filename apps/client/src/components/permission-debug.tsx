@@ -9,16 +9,16 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
  * Solo visible en desarrollo
  */
 export function PermissionDebug() {
-  if (process.env.NODE_ENV !== 'development') {
-    return null;
-  }
-
   const user = useAuthStore((state) => state.user);
   const selectedOrganizationId = useAuthStore((state) => state.selectedOrganizationId);
   const selectedCompanyId = useAuthStore((state) => state.selectedCompanyId);
   const getCurrentOrganization = useAuthStore((state) => state.getCurrentOrganization);
   const permissions = usePermission();
   const currentOrg = getCurrentOrganization();
+
+  if (process.env.NODE_ENV !== 'development') {
+    return null;
+  }
 
   return (
     <Card className="fixed bottom-4 right-4 w-80 z-50 bg-yellow-50 border-yellow-200">

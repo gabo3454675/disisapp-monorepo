@@ -226,7 +226,7 @@ export const useAuthStore = create<AuthState>()(
       },
       setOrganizationConfig: (organizationId: number, config: { exchangeRate?: number; rateUpdatedAt?: string | null; rateUpdatedBy?: string | null; currencyCode?: string; currencySymbol?: string }) => {
         const state = get();
-        const patch = (o: { id: number }) => (o.id === organizationId ? { ...o, ...config } : o);
+        const patch = (o: Organization): Organization => (o.id === organizationId ? { ...o, ...config } : o);
         if (state.user?.organizations?.length) {
           set({ user: { ...state.user, organizations: state.user.organizations.map(patch) } });
         }

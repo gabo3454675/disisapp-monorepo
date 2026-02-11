@@ -156,7 +156,7 @@ export function TaskResolutionModal({
               </div>
               <TaskResolutionBar
                 taskId={task.id}
-                invoiceId={task.invoiceId}
+                invoiceId={task.invoiceId!}
                 onDownloadPDF={handleDownloadPDF}
                 onDone={() => {
                   onDone?.();
