@@ -89,18 +89,24 @@ apiClient.interceptors.response.use(
       if (error.response?.status === 403) {
         const message = (error.response?.data as any)?.message;
         if (message === 'RESET_REQUIRED') {
-          let url = '/auth/reset-password';
+          let userEmail = '';
           try {
+            // Prioridad 1: email del body de la request (login)
             const reqData = error.config?.data;
             if (typeof reqData === 'string') {
               const parsed = JSON.parse(reqData);
-              if (parsed?.email) {
-                url += `?email=${encodeURIComponent(parsed.email)}`;
-              }
+              if (parsed?.email) userEmail = parsed.email;
+            }
+            // Prioridad 2: email en la respuesta del backend (si lo incluye)
+            if (!userEmail && (error.response?.data as any)?.email) {
+              userEmail = (error.response?.data as any).email;
             }
           } catch {
             // ignored
           }
+          const url = userEmail
+            ? `/auth/reset-password?email=${encodeURIComponent(userEmail)}`
+            : '/auth/reset-password';
           window.location.href = url;
           return Promise.reject(error);
         }

@@ -53,8 +53,9 @@ function ResetPasswordForm() {
 
       const { access_token, user } = response.data;
 
+      // Guardar sesión con el nuevo JWT (equivalente a login tras cambio exitoso)
       setAuth(user, access_token);
-      router.push('/');
+      router.push('/'); // Dashboard (raíz de la app)
     } catch (err: any) {
       setError(
         err.response?.data?.message || 'Error al cambiar la contraseña. Verifica tus datos.'
@@ -220,7 +221,7 @@ function ResetPasswordForm() {
 
 export default function ResetPasswordPage() {
   return (
-    <Suspense fallback={<div className="flex items-center justify-center py-12 text-muted-foreground">Cargando...</div>}>
+    <Suspense fallback={<p className="flex items-center justify-center py-12 text-muted-foreground">Cargando...</p>}>
       <ResetPasswordForm />
     </Suspense>
   );
