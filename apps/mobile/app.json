@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "Disis Mobile",
+    "slug": "disis-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "scheme": "disis",
+    "ios": { "supportsTablet": true, "bundleIdentifier": "com.disis.mobile" },
+    "android": { "package": "com.disis.mobile" },
+    "extra": {
+      "apiUrl": "EXPO_PUBLIC_API_URL"
+    }
+  }
+}

@@ -22,6 +22,7 @@ import { InvitationsModule } from './modules/invitations/invitations.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { CreditsModule } from './modules/credits/credits.module';
 import { BackupModule } from './modules/backup/backup.module';
+import { VehicleInspectionsModule } from './modules/vehicle-inspections/vehicle-inspections.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { BackupModule } from './modules/backup/backup.module';
     TasksModule,
     CreditsModule,
     BackupModule,
+    VehicleInspectionsModule,
   ],
   controllers: [AppController],
   providers: [

@@ -2,27 +2,30 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
   UseGuards,
   UploadedFile,
   UseInterceptors,
   BadRequestException,
   Body,
 } from '@nestjs/common';
+import { Res } from '@nestjs/common';
+import { Response } from 'express';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { InventoryService } from './inventory.service';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { OrganizationGuard } from '@/common/guards/organization.guard';
+import { SuperAdminGuard } from '@/common/guards/super-admin.guard';
 import { ActiveOrganization } from '@/common/decorators/active-organization.decorator';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { memoryStorage } from 'multer';
-import { Response } from 'express';
-import { Res } from '@nestjs/common';
+import { ClearInventoryDto } from './dto/clear-inventory.dto';
 
 @Controller('inventory')
-@UseGuards(JwtAuthGuard, OrganizationGuard)
 export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}
 
   @Get()
+  @UseGuards(JwtAuthGuard, OrganizationGuard)
   async findAll(@ActiveOrganization() organizationId: number) {
     return this.inventoryService.findAll(organizationId);
   }
@@ -32,6 +35,7 @@ export class InventoryController {
    * Objetivo: que puedas pedirle el archivo a tus clientes sin ambigüedad.
    */
   @Get('template-format')
+  @UseGuards(JwtAuthGuard, OrganizationGuard)
   async templateFormat() {
     return this.inventoryService.getTemplateFormat();
   }
@@ -41,6 +45,7 @@ export class InventoryController {
    * Incluye notas en los headers para mejorar UX.
    */
   @Get('template')
+  @UseGuards(JwtAuthGuard, OrganizationGuard)
   async downloadTemplate(@Res() res: Response) {
     const buffer = await this.inventoryService.generateTemplateXlsxBuffer();
     res.setHeader(
@@ -63,6 +68,7 @@ export class InventoryController {
    * - confirm=true: ejecuta escritura si no hay errores
    */
   @Post('import')
+  @UseGuards(JwtAuthGuard, OrganizationGuard)
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
@@ -107,5 +113,16 @@ export class InventoryController {
       organizationId,
       confirm: confirmBool,
     });
+  }
+
+  /**
+   * Limpia todo el inventario de una organización (productos y movimientos).
+   * Solo Super Admin global (User.isSuperAdmin). No requiere x-tenant-id.
+   * Body: { tenantId: number }
+   */
+  @Delete('clear')
+  @UseGuards(JwtAuthGuard, SuperAdminGuard)
+  async clear(@Body() dto: ClearInventoryDto) {
+    return this.inventoryService.clearByTenantId(dto.tenantId);
   }
 }

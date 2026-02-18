@@ -32,6 +32,7 @@ model User {
   tasksAssigned  Task[] @relation("TasksAssigned")         // Tareas asignadas al empleado
   tasksCreated   Task[] @relation("TasksCreated")         // Tareas que creó (admin)
   auditLogs      AuditLog[]                              // Acciones sensibles registradas
+  inventoryMovements InventoryMovement[] // Movimientos de inventario realizados
 
   @@index([isSuperAdmin])
   @@map("users")
@@ -124,6 +125,8 @@ model Organization {
   tasks            Task[]       // Tareas de la organización (workflow)
   auditLogs        AuditLog[]   // Historial de acciones sensibles
   customerCredits  CustomerCredit[] // Cuentas de crédito por organización
+  inventoryMovements InventoryMovement[] // Movimientos de inventario
+  vehicleInspections VehicleInspection[] // Inspecciones de vehículos (Davean)
 
   @@index([slug])
   @@map("organizations")
@@ -207,6 +210,7 @@ model Product {
   company       Company       @relation(fields: [companyId], references: [id])
   organization  Organization? @relation(fields: [organizationId], references: [id])
   invoiceItems  InvoiceItem[]
+  inventoryMovements InventoryMovement[] // Movimientos de inventario del producto
 
   @@index([companyId]) // Índice para búsquedas rápidas por empresa (legacy)
   @@index([organizationId]) // Índice para búsquedas rápidas por organización
@@ -216,6 +220,66 @@ model Product {
   // este constraint aplica efectivamente cuando ambos están presentes.
   @@unique([organizationId, sku])
   @@map("products")
+}
+
+// ------------------------------------------
+// ENUM: TIPOS DE MOVIMIENTOS DE INVENTARIO
+// ------------------------------------------
+
+enum MovementType {
+  VENTA
+  AUTOCONSUMO
+  MERMA_VENCIDO
+  MERMA_DANADO
+  USO_TALLER
+}
+
+// ------------------------------------------
+// MOVIMIENTOS DE INVENTARIO
+// ------------------------------------------
+
+model InventoryMovement {
+  id          Int          @id @default(autoincrement())
+  type        MovementType // Tipo de movimiento
+  quantity    Int          // Cantidad (positiva o negativa según el tipo)
+  reason      String?      // Detalles opcionales del movimiento
+  productId   Int          // Producto afectado
+  userId      Int          // Usuario que realizó el movimiento
+  tenantId    Int          // Organización (Multi-Tenant)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  product    Product      @relation(fields: [productId], references: [id])
+  user       User         @relation(fields: [userId], references: [id])
+  tenant     Organization @relation(fields: [tenantId], references: [id])
+
+  @@index([productId])
+  @@index([userId])
+  @@index([tenantId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("inventory_movements")
+}
+
+// ------------------------------------------
+// INSPECCIÓN DE VEHÍCULOS (Davean)
+// ------------------------------------------
+
+model VehicleInspection {
+  id              Int          @id @default(autoincrement())
+  tenantId        Int          // Organización (Multi-Tenant)
+  diagramPins     Json?        // Coordenadas de los pins del diagrama (formato JSON)
+  usedParts       Json?        // Repuestos usados (formato JSON: [{productId, quantity, ...}])
+  vehicleInfo     String?      // Información del vehículo (placa, modelo, etc.)
+  notes           String?      // Notas adicionales de la inspección
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  tenant          Organization @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@index([createdAt])
+  @@map("vehicle_inspections")
 }
 
 // ------------------------------------------
