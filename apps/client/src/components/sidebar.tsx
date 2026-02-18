@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { ChevronLeft, Grid2x2, ShoppingCart, Box, ChevronDown, LogOut, Check, DollarSign, FileText, Users, Settings, Download, CreditCard, Car } from 'lucide-react';
+import { ChevronLeft, Grid2x2, ShoppingCart, Box, ChevronDown, LogOut, Check, DollarSign, FileText, Users, Settings, Download, CreditCard, Car, PackageMinus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
@@ -25,6 +25,7 @@ const navigationItems = [
   { id: 'dashboard', label: 'Dashboard', icon: Grid2x2, href: '/', permission: 'canViewDashboard' },
   { id: 'pos', label: 'POS', icon: ShoppingCart, href: '/pos', permission: 'canManageCustomers' },
   { id: 'products', label: 'Inventario', icon: Box, href: '/products', permission: 'canManageProducts' },
+  { id: 'movements', label: 'Movimientos inventario', icon: PackageMinus, href: '/inventory/movements', permission: 'canManageInventory' },
   { id: 'customers', label: 'Clientes', icon: Users, href: '/customers', permission: 'canManageCustomers' },
   { id: 'invoices', label: 'Facturas', icon: FileText, href: '/invoices', permission: 'canManageCustomers' },
   { id: 'credits', label: 'Cuentas por Cobrar', icon: CreditCard, href: '/credits', permission: 'canManageCustomers' },
@@ -85,7 +86,9 @@ export default function Sidebar() {
   const getActiveItem = () => {
     if (pathname === '/') return 'dashboard';
     if (pathname.startsWith('/pos')) return 'pos';
-    if (pathname.startsWith('/products') || pathname.startsWith('/inventory')) return 'products';
+    if (pathname.startsWith('/products')) return 'products';
+    if (pathname.startsWith('/inventory/movements')) return 'movements';
+    if (pathname.startsWith('/inventory')) return 'products';
     if (pathname.startsWith('/customers')) return 'customers';
     if (pathname.startsWith('/invoices')) return 'invoices';
     if (pathname.startsWith('/credits')) return 'credits';

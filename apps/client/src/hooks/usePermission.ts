@@ -78,6 +78,7 @@ export function usePermission() {
       canAnulateInvoices: isSuperAdmin || isAdmin,
       canDeleteInvoices: isSuperAdmin || isAdmin,
       canManageProducts: isSuperAdmin || isAdmin || isManager || isWarehouse,
+      canManageInventory: isSuperAdmin || isAdmin || isManager || isWarehouse,
       canManageCustomers: isSuperAdmin || isAdmin || isManager || isSeller,
       canViewDashboard: true,
       canViewFinancialCharts: isSuperAdmin || isAdmin || isManager,

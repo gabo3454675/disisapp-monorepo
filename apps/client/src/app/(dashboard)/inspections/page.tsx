@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { VehicleDiagramView } from '@/components/inspection/VehicleDiagramView';
 import { exportInspectionPdf } from '@/lib/exportInspectionPdf';
 import apiClient from '@/lib/api';
+import { usePermission } from '@/hooks/usePermission';
 import {
   AlertCircle,
   CheckCircle2,
@@ -27,6 +28,7 @@ interface Product {
 }
 
 export default function InspectionsPage() {
+  const { canManageInventory } = usePermission();
   const [pins, setPins] = useState<DiagramPin[]>([]);
   const [pinMode, setPinMode] = useState<PinStatus>('damaged');
   const [activeView, setActiveView] = useState<DiagramView>('frontal');
@@ -38,6 +40,8 @@ export default function InspectionsPage() {
   const [saving, setSaving] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [inspectionsList, setInspectionsList] = useState<Array<{ id: number; vehicleInfo: string | null; createdAt: string; usedParts?: unknown }>>([]);
+  const [loadingInspections, setLoadingInspections] = useState(true);
   const diagramRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -47,6 +51,18 @@ export default function InspectionsPage() {
       .catch(() => setProducts([]))
       .finally(() => setProductsLoading(false));
   }, []);
+
+  const loadInspections = () => {
+    apiClient
+      .get<Array<{ id: number; vehicleInfo: string | null; createdAt: string; usedParts?: unknown }>>('/vehicle-inspections')
+      .then((res) => setInspectionsList(res.data ?? []))
+      .catch(() => setInspectionsList([]))
+      .finally(() => setLoadingInspections(false));
+  };
+
+  useEffect(() => {
+    if (canManageInventory) loadInspections();
+  }, [canManageInventory]);
 
   const handleAddPin = (view: DiagramView, x: number, y: number, status: PinStatus) => {
     setPins((prev) => [...prev, { view, x, y, status }]);
@@ -97,6 +113,7 @@ export default function InspectionsPage() {
       setUsedParts([]);
       setVehicleInfo('');
       setNotes('');
+      loadInspections();
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
       setMessage({ type: 'error', text: msg ?? 'Error al guardar la inspección.' });
@@ -124,6 +141,18 @@ export default function InspectionsPage() {
       setExportingPdf(false);
     }
   };
+
+  if (!canManageInventory) {
+    return (
+      <div className="p-4 md:p-8 max-w-5xl mx-auto">
+        <Card>
+          <CardContent className="py-12 text-center">
+            <p className="text-muted-foreground">No tienes permisos para acceder a Inspección vehículo.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-6">
@@ -286,6 +315,42 @@ export default function InspectionsPage() {
           Exportar reporte PDF
         </Button>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Inspecciones recientes</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Historial de inspecciones guardadas (repuestos descontados como Uso taller).
+          </p>
+        </CardHeader>
+        <CardContent>
+          {loadingInspections ? (
+            <p className="text-sm text-muted-foreground">Cargando...</p>
+          ) : inspectionsList.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Aún no hay inspecciones.</p>
+          ) : (
+            <ul className="space-y-2">
+              {inspectionsList.slice(0, 15).map((ins) => (
+                <li
+                  key={ins.id}
+                  className="flex flex-wrap items-center gap-2 text-sm border-b border-border pb-2 last:border-0"
+                >
+                  <span className="font-medium">#{ins.id}</span>
+                  {ins.vehicleInfo && <span className="text-muted-foreground">{ins.vehicleInfo}</span>}
+                  <span className="text-muted-foreground text-xs">
+                    {new Date(ins.createdAt).toLocaleString()}
+                  </span>
+                  {Array.isArray(ins.usedParts) && ins.usedParts.length > 0 && (
+                    <span className="text-xs text-muted-foreground">
+                      {ins.usedParts.length} repuesto(s)
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
