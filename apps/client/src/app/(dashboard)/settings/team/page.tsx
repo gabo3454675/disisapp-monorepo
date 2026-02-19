@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -544,7 +545,7 @@ export default function TeamPage() {
                         <div className="flex items-start gap-3">
                           <Avatar className="h-12 w-12 flex-shrink-0">
                             {member.avatarUrl ? (
-                              <img src={member.avatarUrl} alt={member.fullName || member.email} />
+                              <Image src={member.avatarUrl} alt={member.fullName || member.email} width={48} height={48} className="h-12 w-12 rounded-full object-cover" unoptimized />
                             ) : (
                               <AvatarFallback className="bg-gradient-to-br from-blue-500 to-emerald-500 text-white font-semibold">
                                 {getUserInitials(member)}
@@ -644,7 +645,7 @@ export default function TeamPage() {
                             <div className="flex items-center gap-3">
                               <Avatar className="h-10 w-10">
                                 {member.avatarUrl ? (
-                                  <img src={member.avatarUrl} alt={member.fullName || member.email} />
+                                  <Image src={member.avatarUrl} alt={member.fullName || member.email} width={40} height={40} className="h-10 w-10 rounded-full object-cover" unoptimized />
                                 ) : (
                                   <AvatarFallback className="bg-gradient-to-br from-blue-500 to-emerald-500 text-white font-semibold">
                                     {getUserInitials(member)}

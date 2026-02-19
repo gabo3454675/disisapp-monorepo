@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import Image from 'next/image';
 import { ChevronLeft, Grid2x2, ShoppingCart, Box, ChevronDown, LogOut, Check, DollarSign, FileText, Users, Settings, Download, CreditCard, Car, PackageMinus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -166,13 +167,12 @@ export default function Sidebar() {
         {!isCollapsed ? (
           <div className="flex flex-col min-w-0 flex-1 gap-0.5">
             <div className="flex items-center gap-2">
-              <img
+              <Image
                 src="/logo.png"
                 alt="Logo"
+                width={36}
+                height={36}
                 className="h-9 w-9 flex-shrink-0 rounded-md object-contain"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = 'none';
-                }}
               />
               <h1 className="text-xl font-bold text-sidebar-foreground truncate">Facturación</h1>
             </div>
@@ -183,13 +183,12 @@ export default function Sidebar() {
             )}
           </div>
         ) : (
-          <img
+          <Image
             src="/logo.png"
             alt="Logo"
+            width={36}
+            height={36}
             className="h-9 w-9 flex-shrink-0 rounded-md object-contain"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = 'none';
-            }}
           />
         )}
         <div className="flex items-center gap-1 flex-shrink-0">

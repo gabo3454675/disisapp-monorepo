@@ -48,6 +48,7 @@ export function ExchangeRateIndicator({ onOpenConfig, className }: ExchangeRateI
   const superAdminOrganizations = useAuthStore((s) => s.superAdminOrganizations);
   const currentOrg = useMemo(
     () => useAuthStore.getState().getCurrentOrganization(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- getCurrentOrganization() reads store; deps ensure recompute when selection changes
     [selectedOrganizationId, selectedCompanyId]
   );
   const orgWithRate = currentOrg && 'exchangeRate' in currentOrg ? currentOrg : null;
