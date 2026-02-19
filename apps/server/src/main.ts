@@ -57,6 +57,7 @@ async function bootstrap() {
       'http://localhost:3001',
       'http://localhost:3002',
       'http://localhost:3003',
+      'https://disisapp-monorepo-frontend.onrender.com',
     );
     // También permitir dominios de producción en desarrollo para testing
     allowedOrigins.push(...productionDomains);
