@@ -172,8 +172,6 @@ export default function CreditsPage() {
     }
   };
 
-  const { formatForDisplay } = useDisplayCurrency();
-
   const formatDate = (s: string) =>
     new Date(s).toLocaleDateString('es-VE', { dateStyle: 'short', timeStyle: 'short' });
 

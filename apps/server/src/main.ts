@@ -55,7 +55,8 @@ async function bootstrap() {
     allowedOrigins.push(
       'http://localhost:3000',
       'http://localhost:3001',
-      
+      'http://localhost:3002',
+      'http://localhost:3003',
     );
     // También permitir dominios de producción en desarrollo para testing
     allowedOrigins.push(...productionDomains);

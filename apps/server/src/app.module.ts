@@ -28,7 +28,7 @@ import { VehicleInspectionsModule } from './modules/vehicle-inspections/vehicle-
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '.env',
+      envFilePath: ['.env', '.env.txt'],
     }),
     ScheduleModule.forRoot(),
     CacheModule.register({

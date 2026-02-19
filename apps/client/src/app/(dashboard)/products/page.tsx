@@ -249,17 +249,6 @@ export default function ProductsPage() {
     }).format(amount);
   };
 
-  const filteredProducts = useMemo(() => {
-    if (!debouncedSearchQuery) return products;
-    const query = debouncedSearchQuery.toLowerCase();
-    return products.filter(
-      (product) =>
-        product.name.toLowerCase().includes(query) ||
-        product.sku?.toLowerCase().includes(query) ||
-        product.barcode?.toLowerCase().includes(query)
-    );
-  }, [products, debouncedSearchQuery]);
-
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto">
       <div className="space-y-6">

@@ -134,8 +134,6 @@ export default function InvoicesPage() {
     }
   };
 
-  const { formatForDisplay } = useDisplayCurrency();
-
   const formatDate = (dateString: string) => {
     return new Intl.DateTimeFormat('es-VE', {
       year: 'numeric',
