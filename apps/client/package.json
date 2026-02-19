@@ -8,7 +8,8 @@
     "start": "next start -p 3003",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
-    "build:with-prisma": "prisma generate && nest build --prod"
+    "build:with-prisma": "prisma generate && nest build --prod",
+    "start:prod": "node dist/main.js"
   },
   "dependencies": {
     "@billing-system/shared": "workspace:*",
