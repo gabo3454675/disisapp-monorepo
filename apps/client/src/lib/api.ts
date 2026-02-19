@@ -1,18 +1,26 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
+const DEFAULT_API_URL = 'http://localhost:3001/api';
+
+function getApiUrl(): string {
+  if (typeof window !== 'undefined' && (window as unknown as { __NEXT_PUBLIC_API_URL__?: string }).__NEXT_PUBLIC_API_URL__) {
+    return (window as unknown as { __NEXT_PUBLIC_API_URL__: string }).__NEXT_PUBLIC_API_URL__;
+  }
+  return process.env.NEXT_PUBLIC_API_URL || DEFAULT_API_URL;
+}
 
 export const apiClient = axios.create({
-  baseURL: API_URL,
+  baseURL: DEFAULT_API_URL,
   headers: {
     'Content-Type': 'application/json',
   },
   withCredentials: true,
 });
 
-// Request interceptor: Inyecta token JWT y x-tenant-id automáticamente
+// Request interceptor: Usa la URL del API inyectada en runtime y añade token/tenant
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
+    config.baseURL = getApiUrl();
     // Solo en el cliente (browser)
     if (typeof window !== 'undefined') {
       // Obtener token del localStorage
