@@ -4,10 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3003",
-    "build": "next build",
+    "build": "pnpm --parallel --filter \"./apps/*\" build",
     "start": "next start -p 3003",
     "lint": "next lint",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "build:with-prisma": "prisma generate && nest build --prod"
   },
   "dependencies": {
     "@billing-system/shared": "workspace:*",
