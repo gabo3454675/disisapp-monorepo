@@ -50,6 +50,7 @@ interface Invoice {
 export default function InvoicesPage() {
   const { selectedCompanyId, user } = useAuthStore();
   const { canManageCustomers } = usePermission();
+  const { formatForDisplay } = useDisplayCurrency();
   const isSuperAdmin = !!user?.isSuperAdmin;
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);

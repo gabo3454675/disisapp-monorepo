@@ -48,7 +48,7 @@ export function ExchangeRateIndicator({ onOpenConfig, className }: ExchangeRateI
   const superAdminOrganizations = useAuthStore((s) => s.superAdminOrganizations);
   const currentOrg = useMemo(
     () => useAuthStore.getState().getCurrentOrganization(),
-    [user, superAdminOrganizations, selectedOrganizationId, selectedCompanyId]
+    [selectedOrganizationId, selectedCompanyId]
   );
   const orgWithRate = currentOrg && 'exchangeRate' in currentOrg ? currentOrg : null;
   const rate = orgWithRate?.exchangeRate;

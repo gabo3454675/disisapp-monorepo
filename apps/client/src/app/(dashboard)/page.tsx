@@ -351,7 +351,7 @@ export default function DashboardPage() {
     } finally {
       setLoadingDiagnosis(false);
     }
-  }, [selectedCompanyId]);
+  }, [selectedId]);
 
   useEffect(() => {
     if (mounted && _hasHydrated && isAuthenticated && canViewFinancialCharts) {
