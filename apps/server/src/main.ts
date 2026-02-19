@@ -76,8 +76,12 @@ async function bootstrap() {
         return callback(new Error('Not allowed by CORS'));
       }
       
-      // Verificar si el origin está permitido
-      if (allowedOrigins.includes(origin)) {
+      // Verificar si el origin está permitido (normalizar sin barra final por si el navegador la envía)
+      const normalizedOrigin = origin.replace(/\/$/, '');
+      const isAllowed = allowedOrigins.some(
+        (allowed) => allowed.replace(/\/$/, '') === normalizedOrigin
+      );
+      if (isAllowed) {
         callback(null, true);
       } else {
         callback(new Error('Not allowed by CORS'));
