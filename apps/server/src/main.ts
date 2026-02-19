@@ -68,14 +68,10 @@ async function bootstrap() {
 
   app.enableCors({
     origin: (origin, callback) => {
-      // Permitir requests sin origin (Postman, mobile apps, etc.) solo en desarrollo
-      if (!origin && nodeEnv !== 'production') {
+      // Permitir requests sin origin (health checks, Postman, mobile apps, servidor a servidor).
+      // CORS solo aplica a peticiones de navegador con Origin; sin origin no es cross-origin.
+      if (!origin) {
         return callback(null, true);
-      }
-      
-      // En producción, rechazar requests sin origin
-      if (!origin && nodeEnv === 'production') {
-        return callback(new Error('Not allowed by CORS'));
       }
       
       // Verificar si el origin está permitido (normalizar sin barra final por si el navegador la envía)
