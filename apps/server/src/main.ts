@@ -31,6 +31,7 @@ async function bootstrap() {
   const productionDomains = [
     'https://disisapp.com',
     'https://www.disisapp.com',
+    'https://disisapp-monorepo-frontend.onrender.com',
   ];
   
   if (nodeEnv === 'production') {
