@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { Grid2x2, ShoppingCart, Box, MoreVertical, Users, FileText, CreditCard, DollarSign, Settings, LogOut, Car, PackageMinus } from 'lucide-react';
+import { Grid2x2, ShoppingCart, Box, MoreVertical, Users, FileText, CreditCard, DollarSign, Settings, LogOut, Car, PackageMinus, History } from 'lucide-react';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import {
@@ -34,6 +34,7 @@ const navigationItems = [
 const additionalMenuItems = [
   { id: 'customers', label: 'Clientes', icon: Users, href: '/customers', permission: 'canManageCustomers' },
   { id: 'invoices', label: 'Facturas', icon: FileText, href: '/invoices', permission: 'canManageCustomers' },
+  { id: 'history', label: 'Historial de Ventas', icon: History, href: '/history', permission: 'canManageCustomers' },
   { id: 'credits', label: 'Cuentas por Cobrar', icon: CreditCard, href: '/credits', permission: 'canManageCustomers' },
   { id: 'expenses', label: 'Gastos', icon: DollarSign, href: '/expenses', permission: 'canManageExpenses' },
   { id: 'movements', label: 'Movimientos inventario', icon: PackageMinus, href: '/inventory/movements', permission: 'canManageInventory' },
@@ -109,7 +110,14 @@ export default function BottomNav() {
 
   // Filtrar items adicionales basados en permisos (ADMIN y SUPER_ADMIN ven Configuración)
   const role = String(permissions.role || '').toUpperCase();
+  const currentOrgName = (currentOrg as { name?: string } | null)?.name ?? '';
+  const canSeeInspections =
+    !!user?.isSuperAdmin ||
+    (currentOrgName === 'Davean' && (role === 'ADMIN' || role === 'OPERATOR'));
   const filteredAdditionalItems = additionalMenuItems.filter((item) => {
+    if (item.id === 'inspections') {
+      return canSeeInspections;
+    }
     if (item.permission) {
       const permissionKey = item.permission as keyof typeof permissions;
       const hasPermission = permissions[permissionKey] === true;

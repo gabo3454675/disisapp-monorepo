@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Image from 'next/image';
-import { ChevronLeft, Grid2x2, ShoppingCart, Box, ChevronDown, LogOut, Check, DollarSign, FileText, Users, Settings, Download, CreditCard, Car, PackageMinus } from 'lucide-react';
+import { ChevronLeft, Grid2x2, ShoppingCart, Box, ChevronDown, LogOut, Check, DollarSign, FileText, Users, Settings, Download, CreditCard, Car, PackageMinus, History } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
@@ -29,6 +29,7 @@ const navigationItems = [
   { id: 'movements', label: 'Movimientos inventario', icon: PackageMinus, href: '/inventory/movements', permission: 'canManageInventory' },
   { id: 'customers', label: 'Clientes', icon: Users, href: '/customers', permission: 'canManageCustomers' },
   { id: 'invoices', label: 'Facturas', icon: FileText, href: '/invoices', permission: 'canManageCustomers' },
+  { id: 'history', label: 'Historial de Ventas', icon: History, href: '/history', permission: 'canManageCustomers' },
   { id: 'credits', label: 'Cuentas por Cobrar', icon: CreditCard, href: '/credits', permission: 'canManageCustomers' },
   { id: 'expenses', label: 'Gastos', icon: DollarSign, href: '/expenses', permission: 'canManageExpenses' },
   { id: 'inspections', label: 'Inspección vehículo', icon: Car, href: '/inspections', permission: 'canManageInventory' },
@@ -92,6 +93,7 @@ export default function Sidebar() {
     if (pathname.startsWith('/inventory')) return 'products';
     if (pathname.startsWith('/customers')) return 'customers';
     if (pathname.startsWith('/invoices')) return 'invoices';
+    if (pathname.startsWith('/history')) return 'history';
     if (pathname.startsWith('/credits')) return 'credits';
     if (pathname.startsWith('/expenses')) return 'expenses';
     if (pathname.startsWith('/inspections')) return 'inspections';
@@ -154,6 +156,13 @@ export default function Sidebar() {
 
   // ID seleccionado (priorizar organizationId)
   const selectedId = selectedOrganizationId || selectedCompanyId;
+
+  // Inspección vehículo: empresa Davean y roles ADMIN u OPERATOR; Super Admin siempre puede verlo
+  const currentOrgName = (getCurrentOrganization() as { name?: string } | null)?.name ?? '';
+  const role = String(permissions.role ?? '').toUpperCase();
+  const canSeeInspections =
+    !!user?.isSuperAdmin ||
+    (currentOrgName === 'Davean' && (role === 'ADMIN' || role === 'OPERATOR'));
 
   return (
     <aside
@@ -348,14 +357,18 @@ export default function Sidebar() {
       <nav className="flex-1 p-4 space-y-2 overflow-y-auto overflow-x-hidden min-h-0">
         {navigationItems
           .filter((item) => {
+            // Inspección vehículo: solo Davean y roles ADMIN u OPERATOR
+            if (item.id === 'inspections') {
+              return canSeeInspections;
+            }
             if (item.permission) {
               const permissionKey = item.permission as keyof typeof permissions;
               const permissionValue = permissions[permissionKey];
               const hasPermission = permissionValue === true;
               // ADMIN y SUPER_ADMIN deben ver Configuración (Invitar Miembro, Tasa BCV)
-              const role = String(permissions.role || '').toUpperCase();
+              const roleFilter = String(permissions.role || '').toUpperCase();
               if (item.id === 'settings') {
-                return hasPermission || role === 'ADMIN' || role === 'SUPER_ADMIN';
+                return hasPermission || roleFilter === 'ADMIN' || roleFilter === 'SUPER_ADMIN';
               }
               return hasPermission;
             }

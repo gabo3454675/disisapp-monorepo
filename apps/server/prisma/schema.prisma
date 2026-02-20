@@ -402,6 +402,7 @@ model Invoice {
 
   @@index([companyId])
   @@index([organizationId])
+  @@index([organizationId, createdAt]) // Consultas históricas por rango de fechas
   @@index([publicToken])
   @@index([markedAsPaidByClient])
   @@index([paymentStatus])

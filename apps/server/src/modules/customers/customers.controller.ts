@@ -10,7 +10,8 @@ import {
   ParseIntPipe,
   UseInterceptors,
 } from '@nestjs/common';
-import { CacheInterceptor, CacheTTL } from '@nestjs/cache-manager';
+import { CacheTTL } from '@nestjs/cache-manager';
+import { HttpCacheTenantInterceptor } from '@/common/interceptors/http-cache-tenant.interceptor';
 import { CustomersService } from './customers.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
@@ -32,7 +33,7 @@ export class CustomersController {
   }
 
   @Get()
-  @UseInterceptors(CacheInterceptor)
+  @UseInterceptors(HttpCacheTenantInterceptor)
   @CacheTTL(60)
   async findAll(@ActiveOrganization() organizationId: number) {
     return this.customersService.findAll(organizationId);

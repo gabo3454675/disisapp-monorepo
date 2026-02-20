@@ -181,6 +181,142 @@ export class InvoicesService {
   }
 
   /**
+   * Historial de facturas por rango de fechas: resumen diario y lista detallada.
+   * Un usuario solo puede consultar la organización activa (x-tenant-id); un superadmin puede pasar companyId/organizationId para otra org.
+   * Consulta optimizada con índice (organizationId, createdAt).
+   */
+  async getHistory(
+    activeOrganizationId: number,
+    userId: number,
+    startDate: string,
+    endDate: string,
+    requestedOrganizationId?: number,
+  ) {
+    const orgId = await this.resolveHistoryOrganizationId(
+      activeOrganizationId,
+      userId,
+      requestedOrganizationId,
+    );
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    if (start.getTime() > end.getTime()) {
+      throw new BadRequestException('startDate no puede ser posterior a endDate');
+    }
+    const startOfRange = new Date(start);
+    startOfRange.setUTCHours(0, 0, 0, 0);
+    const endOfRange = new Date(end);
+    endOfRange.setUTCHours(23, 59, 59, 999);
+
+    const invoices = await this.prisma.invoice.findMany({
+      where: {
+        organizationId: orgId,
+        createdAt: {
+          gte: startOfRange,
+          lte: endOfRange,
+        },
+      },
+      include: {
+        items: { include: { product: true } },
+        customer: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const dailySummary = this.buildDailySummary(invoices);
+    return {
+      organizationId: orgId,
+      startDate: startOfRange.toISOString(),
+      endDate: endOfRange.toISOString(),
+      dailySummary,
+      invoices,
+    };
+  }
+
+  /**
+   * Determina la organización a consultar: la activa o la solicitada si el usuario es superadmin.
+   */
+  private async resolveHistoryOrganizationId(
+    activeOrganizationId: number,
+    userId: number,
+    requestedOrganizationId?: number,
+  ): Promise<number> {
+    if (requestedOrganizationId == null || requestedOrganizationId === activeOrganizationId) {
+      return activeOrganizationId;
+    }
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { isSuperAdmin: true },
+    });
+    if (!user?.isSuperAdmin) {
+      throw new ForbiddenException(
+        'Solo puedes consultar el historial de la organización activa (x-tenant-id)',
+      );
+    }
+    const org = await this.prisma.organization.findUnique({
+      where: { id: requestedOrganizationId },
+      select: { id: true },
+    });
+    if (!org) {
+      throw new NotFoundException(
+        `Organización con ID ${requestedOrganizationId} no encontrada`,
+      );
+    }
+    return requestedOrganizationId;
+  }
+
+  /**
+   * Agrupa facturas por día: total ventas, total IGTF (3% cuando pago en divisas) y total por método de pago.
+   */
+  private buildDailySummary(
+    invoices: Array<{
+      totalAmount: unknown;
+      paymentMethod: string;
+      createdAt: Date;
+    }>,
+  ): Array<{
+    date: string;
+    totalSales: number;
+    totalIgft: number;
+    byPaymentMethod: Record<string, number>;
+  }> {
+    const byDate = new Map<
+      string,
+      { totalSales: number; totalIgft: number; byPaymentMethod: Record<string, number> }
+    >();
+
+    const paymentMethodsUsd = ['ZELLE', 'CARD']; // IGTF 3% según flujo cuando pago en USD
+
+    for (const inv of invoices) {
+      const total = this.toNum(inv.totalAmount);
+      const dateKey = new Date(inv.createdAt).toISOString().slice(0, 10);
+      if (!byDate.has(dateKey)) {
+        byDate.set(dateKey, {
+          totalSales: 0,
+          totalIgft: 0,
+          byPaymentMethod: {},
+        });
+      }
+      const day = byDate.get(dateKey)!;
+      day.totalSales += total;
+      const method = (inv.paymentMethod || 'CASH').toUpperCase();
+      day.byPaymentMethod[method] = (day.byPaymentMethod[method] ?? 0) + total;
+      if (paymentMethodsUsd.includes(method)) {
+        day.totalIgft += Math.round(total * 0.03 * 100) / 100;
+      }
+    }
+
+    return Array.from(byDate.entries())
+      .map(([date, data]) => ({
+        date,
+        totalSales: Math.round(data.totalSales * 100) / 100,
+        totalIgft: Math.round(data.totalIgft * 100) / 100,
+        byPaymentMethod: data.byPaymentMethod,
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  /**
    * Obtiene facturas marcadas como pagadas por clientes (para notificaciones)
    */
   async getClientMarkedAsPaid(organizationId: number, limit: number = 10) {

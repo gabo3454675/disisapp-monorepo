@@ -13,7 +13,8 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { CacheInterceptor, CacheTTL } from '@nestjs/cache-manager';
+import { CacheTTL } from '@nestjs/cache-manager';
+import { HttpCacheTenantInterceptor } from '@/common/interceptors/http-cache-tenant.interceptor';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -43,7 +44,7 @@ export class ProductsController {
   }
 
   @Get()
-  @UseInterceptors(CacheInterceptor)
+  @UseInterceptors(HttpCacheTenantInterceptor)
   @CacheTTL(60)
   findAll(@ActiveOrganization() organizationId: number) {
     return this.productsService.findAll(organizationId);

@@ -2,6 +2,11 @@
 import { cn } from '@/lib/utils';
 import type { DiagramPin, DiagramView, PinStatus } from '@/types/inspection';
 
+/**
+ * Vista del diagrama de inspección (pins dañado/reparado). Módulo exclusivo Davean:
+ * los datos se envían desde la página de inspecciones al backend, que los asocia
+ * al tenant/organización activa (CompanyAccessGuard garantiza que sea Davean).
+ */
 /** Silueta del vehículo por vista (frontal, trasera, lateral, superior) para el diagrama Davean */
 function VehicleSilhouette({ view }: { view: DiagramView }) {
   const w = 160;

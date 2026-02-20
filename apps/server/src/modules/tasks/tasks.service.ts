@@ -124,10 +124,14 @@ export class TasksService {
    * Obtiene las tareas pendientes (PENDING o IN_PROGRESS) del usuario logueado.
    * category opcional: ej. "COBRANZA" para filtrar.
    */
-  async getMyPending(userId: number, category?: string) {
+  /**
+   * Tareas pendientes asignadas al usuario, solo de la organización activa (x-tenant-id).
+   */
+  async getMyPending(userId: number, organizationId: number, category?: string) {
     const tasks = await this.prisma.task.findMany({
       where: {
         assignedToId: userId,
+        organizationId,
         status: {
           in: [TaskStatus.PENDING, TaskStatus.IN_PROGRESS],
         },
@@ -234,10 +238,14 @@ export class TasksService {
   /**
    * Cuenta tareas no leídas asignadas al usuario (para badge de notificaciones).
    */
-  async getMyUnreadCount(userId: number): Promise<{ count: number }> {
+  /**
+   * Cuenta de tareas no leídas del usuario en la organización activa.
+   */
+  async getMyUnreadCount(userId: number, organizationId: number): Promise<{ count: number }> {
     const count = await this.prisma.task.count({
       where: {
         assignedToId: userId,
+        organizationId,
         read: false,
         status: { in: [TaskStatus.PENDING, TaskStatus.IN_PROGRESS] },
       },
@@ -279,9 +287,12 @@ export class TasksService {
   /**
    * Tareas creadas por el usuario (para que el gerente vea estado actualizado por el asignado).
    */
-  async getCreatedByMe(userId: number) {
+  /**
+   * Tareas creadas por el usuario, solo de la organización activa.
+   */
+  async getCreatedByMe(userId: number, organizationId: number) {
     const tasks = await this.prisma.task.findMany({
-      where: { createdById: userId },
+      where: { createdById: userId, organizationId },
       include: {
         assignedTo: {
           select: {

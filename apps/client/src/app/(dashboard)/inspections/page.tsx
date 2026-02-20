@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -9,6 +10,7 @@ import { VehicleDiagramView } from '@/components/inspection/VehicleDiagramView';
 import { exportInspectionPdf } from '@/lib/exportInspectionPdf';
 import apiClient from '@/lib/api';
 import { usePermission } from '@/hooks/usePermission';
+import { useAuthStore } from '@/store/useAuthStore';
 import {
   AlertCircle,
   CheckCircle2,
@@ -20,6 +22,9 @@ import {
 } from 'lucide-react';
 import type { DiagramPin, DiagramView, PinStatus, UsedPart } from '@/types/inspection';
 
+const DAVEAN_NAME = 'Davean';
+const ALLOWED_INSPECTION_ROLES = ['ADMIN', 'OPERATOR'];
+
 interface Product {
   id: number;
   name: string;
@@ -28,7 +33,10 @@ interface Product {
 }
 
 export default function InspectionsPage() {
-  const { canManageInventory } = usePermission();
+  const router = useRouter();
+  const user = useAuthStore((s) => s.user);
+  const getCurrentOrganization = useAuthStore((s) => s.getCurrentOrganization);
+  const { canManageInventory, role } = usePermission();
   const [pins, setPins] = useState<DiagramPin[]>([]);
   const [pinMode, setPinMode] = useState<PinStatus>('damaged');
   const [activeView, setActiveView] = useState<DiagramView>('frontal');
@@ -42,9 +50,52 @@ export default function InspectionsPage() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [inspectionsList, setInspectionsList] = useState<Array<{ id: number; vehicleInfo: string | null; createdAt: string; usedParts?: unknown }>>([]);
   const [loadingInspections, setLoadingInspections] = useState(true);
+  const [accessChecked, setAccessChecked] = useState(false);
+  const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null);
   const diagramRef = useRef<HTMLDivElement | null>(null);
 
+  // Logo Davean para PDF (opcional: si existe /logo-davean.png se usa en el reporte)
   useEffect(() => {
+    if (!accessChecked) return;
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0);
+          setLogoDataUrl(canvas.toDataURL('image/png'));
+        }
+      } catch {
+        setLogoDataUrl(null);
+      }
+    };
+    img.onerror = () => setLogoDataUrl(null);
+    img.src = '/logo-davean.png';
+  }, [accessChecked]);
+
+  // Redirigir al dashboard si no pertenece a Davean o no tiene rol ADMIN/OPERATOR (Super Admin siempre puede)
+  useEffect(() => {
+    if (user?.isSuperAdmin) {
+      setAccessChecked(true);
+      return;
+    }
+    const currentOrg = getCurrentOrganization() as { name?: string } | null;
+    const orgName = currentOrg?.name ?? '';
+    const roleUpper = String(role ?? '').toUpperCase();
+    const allowed = orgName === DAVEAN_NAME && ALLOWED_INSPECTION_ROLES.includes(roleUpper);
+    if (!allowed) {
+      router.replace('/?error=inspeccion_restringida');
+      return;
+    }
+    setAccessChecked(true);
+  }, [user?.isSuperAdmin, getCurrentOrganization, role, router]);
+
+  useEffect(() => {
+    if (!accessChecked) return;
     apiClient
       .get<Product[]>('/products')
       .then((res) => setProducts(res.data ?? []))
@@ -52,17 +103,18 @@ export default function InspectionsPage() {
       .finally(() => setProductsLoading(false));
   }, []);
 
-  const loadInspections = () => {
+  const loadInspections = useCallback(() => {
+    setLoadingInspections(true);
     apiClient
       .get<Array<{ id: number; vehicleInfo: string | null; createdAt: string; usedParts?: unknown }>>('/vehicle-inspections')
       .then((res) => setInspectionsList(res.data ?? []))
       .catch(() => setInspectionsList([]))
       .finally(() => setLoadingInspections(false));
-  };
+  }, []);
 
   useEffect(() => {
-    if (canManageInventory) loadInspections();
-  }, [canManageInventory]);
+    if (accessChecked && canManageInventory) loadInspections();
+  }, [accessChecked, canManageInventory, loadInspections]);
 
   const handleAddPin = (view: DiagramView, x: number, y: number, status: PinStatus) => {
     setPins((prev) => [...prev, { view, x, y, status }]);
@@ -102,6 +154,7 @@ export default function InspectionsPage() {
     setMessage(null);
     setSaving(true);
     try {
+      // POST usa el tenant activo (x-tenant-id). CompanyAccessGuard en backend garantiza que sea Davean.
       await apiClient.post('/vehicle-inspections', {
         diagramPins: pins.length ? pins : undefined,
         usedParts: usedParts.length ? usedParts.map((p) => ({ productId: p.productId, quantity: p.quantity })) : undefined,
@@ -126,6 +179,8 @@ export default function InspectionsPage() {
     setExportingPdf(true);
     setMessage(null);
     try {
+      const currentOrg = getCurrentOrganization() as { name?: string } | null;
+      const companyName = currentOrg?.name?.trim() || DAVEAN_NAME;
       await exportInspectionPdf({
         diagramElement: diagramRef.current,
         pins,
@@ -133,6 +188,8 @@ export default function InspectionsPage() {
         vehicleInfo: vehicleInfo.trim() || undefined,
         notes: notes.trim() || undefined,
         title: `Inspección vehículo${vehicleInfo.trim() ? ` - ${vehicleInfo.trim()}` : ''} - ${new Date().toLocaleDateString()}`,
+        companyName,
+        logoDataUrl: logoDataUrl ?? undefined,
       });
       setMessage({ type: 'success', text: 'PDF descargado.' });
     } catch {
@@ -141,6 +198,17 @@ export default function InspectionsPage() {
       setExportingPdf(false);
     }
   };
+
+  if (!accessChecked) {
+    return (
+      <div className="p-4 md:p-8 max-w-5xl mx-auto flex items-center justify-center min-h-[40vh]">
+        <div className="text-center text-muted-foreground">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" />
+          <p>Comprobando acceso...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!canManageInventory) {
     return (

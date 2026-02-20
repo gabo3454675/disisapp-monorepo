@@ -9,11 +9,13 @@ import {
   ParseIntPipe,
   Res,
   Header,
+  Query,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Response } from 'express';
 import { InvoicesService } from './invoices.service';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
+import { InvoiceHistoryQueryDto } from './dto/history-query.dto';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { OrganizationGuard } from '@/common/guards/organization.guard';
 import { ActiveOrganization } from '@/common/decorators/active-organization.decorator';
@@ -47,6 +49,26 @@ export class InvoicesController {
   @Get('client-marked-paid')
   async getClientMarkedAsPaid(@ActiveOrganization() organizationId: number) {
     return this.invoicesService.getClientMarkedAsPaid(organizationId);
+  }
+
+  /**
+   * Historial de facturas por rango de fechas: resumen diario (total ventas, IGTF, por método de pago) y lista detallada.
+   * Query: startDate, endDate (ISO 8601), opcional companyId u organizationId (solo superadmin puede consultar otra org).
+   */
+  @Get('history')
+  async getHistory(
+    @Query() query: InvoiceHistoryQueryDto,
+    @ActiveOrganization() activeOrganizationId: number,
+    @ActiveUser() user: { id: number },
+  ) {
+    const requestedOrgId = query.organizationId ?? query.companyId;
+    return this.invoicesService.getHistory(
+      activeOrganizationId,
+      user.id,
+      query.startDate,
+      query.endDate,
+      requestedOrgId,
+    );
   }
 
   /**

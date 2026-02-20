@@ -11,6 +11,10 @@ export interface ExportInspectionPdfOptions {
   notes?: string;
   /** Ej: "Inspección 18/02/2025" */
   title?: string;
+  /** Nombre de la empresa (ej. Davean) para la cabecera del reporte. Módulo exclusivo Davean. */
+  companyName: string;
+  /** Logo en data URL (base64) para incluir en la cabecera. Opcional. */
+  logoDataUrl?: string | null;
 }
 
 export async function exportInspectionPdf(options: ExportInspectionPdfOptions): Promise<void> {
@@ -21,6 +25,8 @@ export async function exportInspectionPdf(options: ExportInspectionPdfOptions): 
     vehicleInfo,
     notes,
     title = 'Reporte de inspección',
+    companyName,
+    logoDataUrl,
   } = options;
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -28,9 +34,29 @@ export async function exportInspectionPdf(options: ExportInspectionPdfOptions): 
   const margin = 15;
   let y = margin;
 
-  doc.setFontSize(16);
-  doc.text(title, margin, y);
-  y += 10;
+  // Cabecera: logo (si existe) + nombre de la empresa + título — módulo exclusivo Davean
+  const headerLeft = margin;
+  const logoSize = 12;
+  let textStartX = headerLeft;
+  if (logoDataUrl) {
+    try {
+      doc.addImage(logoDataUrl, 'PNG', headerLeft, y - 2, logoSize, logoSize);
+      textStartX = headerLeft + logoSize + 4;
+    } catch {
+      textStartX = headerLeft;
+    }
+  }
+  const displayName = (companyName.trim() || 'Davean').slice(0, 40);
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.text(displayName, textStartX, y + 4);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.setTextColor(100, 100, 100);
+  const titleShort = String(title).slice(0, 60);
+  doc.text(titleShort, textStartX, y + 9);
+  doc.setTextColor(0, 0, 0);
+  y += 2;
 
   if (vehicleInfo) {
     doc.setFontSize(11);
@@ -107,5 +133,6 @@ export async function exportInspectionPdf(options: ExportInspectionPdfOptions): 
     });
   }
 
-  doc.save(`inspeccion-${Date.now()}.pdf`);
+  const slug = (companyName || 'inspeccion').replace(/\s+/g, '-').toLowerCase().slice(0, 20);
+  doc.save(`inspeccion-${slug}-${Date.now()}.pdf`);
 }

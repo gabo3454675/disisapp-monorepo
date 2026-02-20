@@ -7,6 +7,12 @@ import { PrismaService } from '@/common/prisma/prisma.service';
 import { MovementType } from '@prisma/client';
 import type { CreateInspectionDto } from './dto/create-inspection.dto';
 
+/**
+ * Servicio de inspección de vehículos. Módulo exclusivo Davean: el acceso está
+ * restringido por CompanyAccessGuard (solo empresa Davean). Todos los datos
+ * guardados (diagramPins, usedParts, fotos/diagramas) quedan asociados al
+ * tenantId (organización) de la petición, que en práctica es siempre Davean.
+ */
 @Injectable()
 export class VehicleInspectionsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -14,6 +20,7 @@ export class VehicleInspectionsService {
   /**
    * Crea una inspección de vehículo. Por cada repuesto en usedParts,
    * descuenta del inventario (movimiento USO_TALLER) y luego guarda la inspección.
+   * Los datos se asocian al organizationId/tenantId de la petición (Davean).
    */
   async create(params: {
     organizationId: number;

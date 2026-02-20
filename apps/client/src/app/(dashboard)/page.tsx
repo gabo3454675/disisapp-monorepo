@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   BarChart,
   Bar,
@@ -279,7 +279,7 @@ export default function DashboardPage() {
   }, [selectedId]);
 
   const fetchMyPendingTasks = useCallback(async () => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !selectedId) return;
     try {
       setLoadingTasks(true);
       const url = taskCategoryFilter ? `/tasks/my-pending?category=${encodeURIComponent(taskCategoryFilter)}` : '/tasks/my-pending';
@@ -290,10 +290,10 @@ export default function DashboardPage() {
     } finally {
       setLoadingTasks(false);
     }
-  }, [isAuthenticated, taskCategoryFilter]);
+  }, [isAuthenticated, selectedId, taskCategoryFilter]);
 
   const fetchCreatedByMeTasks = useCallback(async () => {
-    if (!isAuthenticated || !canSeeCreatedByMe) return;
+    if (!isAuthenticated || !canSeeCreatedByMe || !selectedId) return;
     try {
       setLoadingCreatedByMe(true);
       const res = await apiClient.get<CreatedByMeTask[]>('/tasks/created-by-me');
@@ -303,7 +303,7 @@ export default function DashboardPage() {
     } finally {
       setLoadingCreatedByMe(false);
     }
-  }, [isAuthenticated, canSeeCreatedByMe]);
+  }, [isAuthenticated, canSeeCreatedByMe, selectedId]);
 
   useEffect(() => {
     if (mounted && _hasHydrated && isAuthenticated) {
@@ -410,6 +410,14 @@ export default function DashboardPage() {
   };
 
   const userName = user?.fullName?.split(' ')[0] || user?.email?.split('@')[0] || 'Usuario';
+  const searchParams = useSearchParams();
+  const [inspeccionRestringidaMessage, setInspeccionRestringidaMessage] = useState(false);
+  useEffect(() => {
+    if (searchParams.get('error') === 'inspeccion_restringida') {
+      setInspeccionRestringidaMessage(true);
+      router.replace('/');
+    }
+  }, [searchParams, router]);
 
   return (
     <div className="min-w-0 overflow-x-hidden px-4 py-5 sm:px-5 sm:py-6 md:px-6 md:py-7 lg:px-8 lg:py-8 max-w-7xl mx-auto">
@@ -420,6 +428,21 @@ export default function DashboardPage() {
         </h1>
         <p className="text-sm sm:text-base text-muted-foreground">Esto es lo que está pasando con tu negocio hoy.</p>
       </div>
+
+      {/* Mensaje al redirigir desde Inspección sin acceso */}
+      {inspeccionRestringidaMessage && (
+        <Card className="mb-6 bg-amber-500/10 border-amber-500/40">
+          <CardContent className="py-4 flex items-center gap-3">
+            <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0" />
+            <p className="text-sm text-foreground">
+              No tienes acceso al módulo de Inspección de vehículos. Está restringido a la empresa autorizada (Davean) y a usuarios con rol ADMIN u OPERATOR.
+            </p>
+            <Button variant="ghost" size="sm" className="shrink-0" onClick={() => setInspeccionRestringidaMessage(false)}>
+              Cerrar
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Estado de carga */}
       {loading && (

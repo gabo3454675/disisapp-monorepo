@@ -41,31 +41,43 @@ export class TasksController {
   }
 
   /**
-   * Obtener tareas pendientes (PENDING / IN_PROGRESS) del usuario logueado.
-   * Query: category (ej. COBRANZA) para filtrar por categoría.
+   * Obtener tareas pendientes (PENDING / IN_PROGRESS) del usuario en la organización activa.
+   * Requiere x-tenant-id. Query: category (ej. COBRANZA) para filtrar por categoría.
    */
   @Get('my-pending')
+  @UseGuards(OrganizationGuard)
   getMyPending(
     @ActiveUser() user: { id: number },
+    @ActiveOrganization() organizationId: number,
     @Query('category') category?: string,
   ) {
-    return this.tasksService.getMyPending(user.id, category);
+    return this.tasksService.getMyPending(user.id, organizationId, category);
   }
 
   /**
-   * Contar tareas no leídas asignadas al usuario (para badge de notificaciones).
+   * Contar tareas no leídas asignadas al usuario en la organización activa (para badge).
+   * Requiere x-tenant-id.
    */
   @Get('my-unread-count')
-  getMyUnreadCount(@ActiveUser() user: { id: number }) {
-    return this.tasksService.getMyUnreadCount(user.id);
+  @UseGuards(OrganizationGuard)
+  getMyUnreadCount(
+    @ActiveUser() user: { id: number },
+    @ActiveOrganization() organizationId: number,
+  ) {
+    return this.tasksService.getMyUnreadCount(user.id, organizationId);
   }
 
   /**
-   * Tareas creadas por el usuario (para que el gerente vea el estado actualizado por el asignado).
+   * Tareas creadas por el usuario en la organización activa.
+   * Requiere x-tenant-id.
    */
   @Get('created-by-me')
-  getCreatedByMe(@ActiveUser() user: { id: number }) {
-    return this.tasksService.getCreatedByMe(user.id);
+  @UseGuards(OrganizationGuard)
+  getCreatedByMe(
+    @ActiveUser() user: { id: number },
+    @ActiveOrganization() organizationId: number,
+  ) {
+    return this.tasksService.getCreatedByMe(user.id, organizationId);
   }
 
   /**

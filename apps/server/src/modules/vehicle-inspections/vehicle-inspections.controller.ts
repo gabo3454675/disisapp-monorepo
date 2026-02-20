@@ -10,12 +10,13 @@ import {
 import { VehicleInspectionsService } from './vehicle-inspections.service';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { OrganizationGuard } from '@/common/guards/organization.guard';
+import { CompanyAccessGuard } from '@/common/guards/company-access.guard';
 import { ActiveOrganization } from '@/common/decorators/active-organization.decorator';
 import { ActiveUser } from '@/common/decorators/active-user.decorator';
 import { CreateInspectionDto } from './dto/create-inspection.dto';
 
 @Controller('vehicle-inspections')
-@UseGuards(JwtAuthGuard, OrganizationGuard)
+@UseGuards(JwtAuthGuard, OrganizationGuard, CompanyAccessGuard)
 export class VehicleInspectionsController {
   constructor(
     private readonly vehicleInspectionsService: VehicleInspectionsService,
