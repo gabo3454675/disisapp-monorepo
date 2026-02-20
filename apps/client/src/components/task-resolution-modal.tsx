@@ -51,7 +51,7 @@ export function TaskResolutionModal({
 
   useEffect(() => {
     if (task) setCurrentStatus(task.status);
-  }, [task?.id, task?.status]);
+  }, [task]);
 
   // Marcar como leída al abrir el modal
   useEffect(() => {

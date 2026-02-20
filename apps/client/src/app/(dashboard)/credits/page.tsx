@@ -47,6 +47,7 @@ export default function CreditsPage() {
   const { selectedCompanyId } = useAuthStore();
   const exchangeRate = useExchangeRate();
   const { canManageCustomers, isSuperAdmin, isAdmin } = usePermission();
+  const { formatForDisplay } = useDisplayCurrency();
   const canEditCreditLimit = isSuperAdmin || isAdmin;
   const [credits, setCredits] = useState<CustomerCredit[]>([]);
   const [loading, setLoading] = useState(true);
@@ -171,8 +172,6 @@ export default function CreditsPage() {
       setSubmitting(false);
     }
   };
-
-  const { formatForDisplay } = useDisplayCurrency();
 
   const formatDate = (s: string) =>
     new Date(s).toLocaleDateString('es-VE', { dateStyle: 'short', timeStyle: 'short' });

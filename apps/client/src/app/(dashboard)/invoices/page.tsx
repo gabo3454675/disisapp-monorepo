@@ -50,6 +50,7 @@ interface Invoice {
 export default function InvoicesPage() {
   const { selectedCompanyId, user } = useAuthStore();
   const { canManageCustomers } = usePermission();
+  const { formatForDisplay } = useDisplayCurrency();
   const isSuperAdmin = !!user?.isSuperAdmin;
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -133,8 +134,6 @@ export default function InvoicesPage() {
       alert(typeof msg === 'string' ? msg : 'Error al descargar la factura');
     }
   };
-
-  const { formatForDisplay } = useDisplayCurrency();
 
   const formatDate = (dateString: string) => {
     return new Intl.DateTimeFormat('es-VE', {

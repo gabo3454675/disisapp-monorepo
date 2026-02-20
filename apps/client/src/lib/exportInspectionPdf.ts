@@ -24,7 +24,7 @@ export async function exportInspectionPdf(options: ExportInspectionPdfOptions): 
   } = options;
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  const pageW = doc.getPageWidth(doc.getCurrentPage());
+  const pageW = doc.internal.pageSize.getWidth();
   const margin = 15;
   let y = margin;
 

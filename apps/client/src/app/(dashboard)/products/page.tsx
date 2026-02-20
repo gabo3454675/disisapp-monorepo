@@ -75,20 +75,6 @@ export default function ProductsPage() {
 
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
-  if (!canManageProducts) {
-    return (
-      <div className="p-4 md:p-8 max-w-7xl mx-auto">
-        <Card>
-          <CardContent className="py-12 text-center">
-            <p className="text-muted-foreground">
-              No tienes permisos para acceder a esta sección.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   const handleDownloadInventoryTemplate = useCallback(async () => {
     try {
       const response = await apiClient.get('/inventory/template', {
@@ -253,12 +239,26 @@ export default function ProductsPage() {
     if (!debouncedSearchQuery) return products;
     const query = debouncedSearchQuery.toLowerCase();
     return products.filter(
-      (product) =>
-        product.name.toLowerCase().includes(query) ||
-        product.sku?.toLowerCase().includes(query) ||
-        product.barcode?.toLowerCase().includes(query)
+      (p) =>
+        p.name.toLowerCase().includes(query) ||
+        p.sku?.toLowerCase().includes(query) ||
+        p.barcode?.toLowerCase().includes(query)
     );
   }, [products, debouncedSearchQuery]);
+
+  if (!canManageProducts) {
+    return (
+      <div className="p-4 md:p-8 max-w-7xl mx-auto">
+        <Card>
+          <CardContent className="py-12 text-center">
+            <p className="text-muted-foreground">
+              No tienes permisos para acceder a esta sección.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto">

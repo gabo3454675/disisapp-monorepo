@@ -55,9 +55,18 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const apiUrl =
+    typeof process.env.NEXT_PUBLIC_API_URL === 'string' && process.env.NEXT_PUBLIC_API_URL
+      ? process.env.NEXT_PUBLIC_API_URL
+      : 'http://localhost:3001/api';
   return (
     <html lang="es" suppressHydrationWarning>
       <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.__NEXT_PUBLIC_API_URL__=${JSON.stringify(apiUrl)};`,
+          }}
+        />
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){var k='disis-theme';try{var v=localStorage.getItem(k);if(v){var s=JSON.parse(v);if(s&&s.state&&s.state.theme==='dark')document.documentElement.classList.add('dark');else document.documentElement.classList.remove('dark');}else document.documentElement.classList.remove('dark');}catch(e){document.documentElement.classList.remove('dark');}})();`,

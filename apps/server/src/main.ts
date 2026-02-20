@@ -31,6 +31,7 @@ async function bootstrap() {
   const productionDomains = [
     'https://disisapp.com',
     'https://www.disisapp.com',
+    'https://disisapp-monorepo-frontend.onrender.com',
   ];
   
   if (nodeEnv === 'production') {
@@ -55,28 +56,45 @@ async function bootstrap() {
     allowedOrigins.push(
       'http://localhost:3000',
       'http://localhost:3001',
-      
+      'http://localhost:3002',
+      'http://localhost:3003',
+      'https://disisapp-monorepo-frontend.onrender.com',
     );
     // También permitir dominios de producción en desarrollo para testing
     allowedOrigins.push(...productionDomains);
   }
 
+  console.log('[CORS] NODE_ENV=', nodeEnv, 'allowedOrigins=', allowedOrigins.length, '(hostname check for disisapp-monorepo-frontend*.onrender.com enabled)');
+
   app.enableCors({
     origin: (origin, callback) => {
-      // Permitir requests sin origin (Postman, mobile apps, etc.) solo en desarrollo
-      if (!origin && nodeEnv !== 'production') {
+      // Permitir requests sin origin (health checks, Postman, mobile apps, servidor a servidor).
+      // CORS solo aplica a peticiones de navegador con Origin; sin origin no es cross-origin.
+      if (!origin) {
         return callback(null, true);
       }
       
-      // En producción, rechazar requests sin origin
-      if (!origin && nodeEnv === 'production') {
-        return callback(new Error('Not allowed by CORS'));
+      // Verificar si el origin está permitido (normalizar sin barra final por si el navegador la envía)
+      const normalizedOrigin = origin.replace(/\/$/, '');
+      const isInList = allowedOrigins.some(
+        (allowed) => allowed.replace(/\/$/, '') === normalizedOrigin
+      );
+      // Permitir también por hostname (origen con puerto, preview deploys de Render, etc.)
+      let isAllowedByHost = false;
+      try {
+        const url = new URL(origin);
+        const h = url.hostname;
+        isAllowedByHost =
+          h === 'disisapp-monorepo-frontend.onrender.com' ||
+          (h.endsWith('.onrender.com') && h.startsWith('disisapp-monorepo-frontend'));
+      } catch {
+        // ignore invalid URL
       }
-      
-      // Verificar si el origin está permitido
-      if (allowedOrigins.includes(origin)) {
+      const isAllowed = isInList || isAllowedByHost;
+      if (isAllowed) {
         callback(null, true);
       } else {
+        console.error('[CORS] Rejected origin:', JSON.stringify(origin), 'Allowed:', allowedOrigins);
         callback(new Error('Not allowed by CORS'));
       }
     },

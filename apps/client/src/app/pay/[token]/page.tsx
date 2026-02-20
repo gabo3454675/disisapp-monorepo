@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import axios from 'axios';
 import { Download, Share2, Loader2, CheckCircle, XCircle, MessageCircle, QrCode, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import Image from 'next/image';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -315,10 +316,13 @@ export default function PublicInvoicePage() {
             <div className="flex items-start justify-between">
               <div>
                 {invoice.company.logoUrl && (
-                  <img
+                  <Image
                     src={invoice.company.logoUrl}
                     alt={invoice.company.name}
+                    width={64}
+                    height={64}
                     className="h-16 mb-4 object-contain"
+                    unoptimized
                   />
                 )}
                 <CardTitle className="text-2xl mb-2">

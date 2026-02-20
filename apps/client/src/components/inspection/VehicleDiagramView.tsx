@@ -68,7 +68,7 @@ interface VehicleDiagramViewProps {
   activeView: DiagramView;
   onViewChange: (view: DiagramView) => void;
   /** Ref para captura en PDF */
-  diagramRef?: React.RefObject<HTMLDivElement | null>;
+  diagramRef?: React.Ref<HTMLDivElement>;
   className?: string;
 }
 
