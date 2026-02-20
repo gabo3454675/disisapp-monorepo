@@ -5,16 +5,14 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '@/common/prisma/prisma.service';
-import { getCompanyIdFromOrganization } from '@/common/helpers/organization.helper';
 
-/** Nombre de la empresa a la que se restringe el acceso a inspección de vehículos. */
-const ALLOWED_COMPANY_NAME = 'Davean';
+/** Nombre de la organización a la que se restringe el acceso a inspección de vehículos. */
+const ALLOWED_ORGANIZATION_NAME = 'Davean';
 
 /**
- * Guard que restringe el acceso a inspección de vehículos a la empresa 'Davean'.
+ * Guard que restringe el acceso a inspección de vehículos a la organización 'Davean'.
  * Debe usarse junto con JwtAuthGuard y OrganizationGuard (para tener activeOrganizationId).
- * Extrae el companyId del contexto de la organización activa (x-tenant-id) y solo permite
- * el acceso si coincide con el ID de la empresa con nombre 'Davean'.
+ * Solo permite el acceso si la organización activa (x-tenant-id) es la de nombre 'Davean'.
  */
 @Injectable()
 export class CompanyAccessGuard implements CanActivate {
@@ -30,13 +28,8 @@ export class CompanyAccessGuard implements CanActivate {
       );
     }
 
-    const companyId = await getCompanyIdFromOrganization(
-      this.prisma,
-      organizationId,
-    );
-
-    const davean = await this.prisma.company.findFirst({
-      where: { name: ALLOWED_COMPANY_NAME, isActive: true },
+    const davean = await this.prisma.organization.findFirst({
+      where: { nombre: ALLOWED_ORGANIZATION_NAME },
       select: { id: true },
     });
 
@@ -46,7 +39,7 @@ export class CompanyAccessGuard implements CanActivate {
       );
     }
 
-    if (companyId !== davean.id) {
+    if (organizationId !== davean.id) {
       throw new ForbiddenException(
         'El acceso a inspección de vehículos está restringido a la empresa autorizada.',
       );

@@ -101,7 +101,7 @@ export default function InspectionsPage() {
       .then((res) => setProducts(res.data ?? []))
       .catch(() => setProducts([]))
       .finally(() => setProductsLoading(false));
-  }, []);
+  }, [accessChecked]);
 
   const loadInspections = useCallback(() => {
     setLoadingInspections(true);

@@ -211,6 +211,8 @@ export default function DashboardPage() {
   const [strategy, setStrategy] = useState<DashboardStrategy>(DEFAULT_STRATEGY);
   const [loadingStrategy, setLoadingStrategy] = useState(false);
   const [taskCategoryFilter, setTaskCategoryFilter] = useState<string>('');
+  const searchParams = useSearchParams();
+  const [inspeccionRestringidaMessage, setInspeccionRestringidaMessage] = useState(false);
 
   const canSeeCreatedByMe = isSuperAdmin || isAdmin || isManager;
   const { formatForDisplay, displayCurrency } = useDisplayCurrency();
@@ -378,6 +380,13 @@ export default function DashboardPage() {
     }
   }, [mounted, _hasHydrated, isAuthenticated, canViewFinancialCharts, fetchDashboardStrategy]);
 
+  useEffect(() => {
+    if (searchParams.get('error') === 'inspeccion_restringida') {
+      setInspeccionRestringidaMessage(true);
+      router.replace('/');
+    }
+  }, [searchParams, router]);
+
   // Mientras se carga en el servidor o hidrata, mostrar un estado de carga
   if (!mounted || !_hasHydrated) {
     return (
@@ -410,14 +419,6 @@ export default function DashboardPage() {
   };
 
   const userName = user?.fullName?.split(' ')[0] || user?.email?.split('@')[0] || 'Usuario';
-  const searchParams = useSearchParams();
-  const [inspeccionRestringidaMessage, setInspeccionRestringidaMessage] = useState(false);
-  useEffect(() => {
-    if (searchParams.get('error') === 'inspeccion_restringida') {
-      setInspeccionRestringidaMessage(true);
-      router.replace('/');
-    }
-  }, [searchParams, router]);
 
   return (
     <div className="min-w-0 overflow-x-hidden px-4 py-5 sm:px-5 sm:py-6 md:px-6 md:py-7 lg:px-8 lg:py-8 max-w-7xl mx-auto">
