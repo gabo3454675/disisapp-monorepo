@@ -251,9 +251,9 @@ export default function HistoryPage() {
                     <SelectValue placeholder="Todas / actual" />
                   </SelectTrigger>
                   <SelectContent>
-                    {organizations.map((org) => (
+                    {(organizations as Array<{ id: number; name?: string; nombre?: string }>).map((org) => (
                       <SelectItem key={org.id} value={String(org.id)}>
-                        {'name' in org ? org.name : (org as { nombre?: string }).nombre ?? `Org ${org.id}`}
+                        {org.name ?? org.nombre ?? `Org ${org.id}`}
                       </SelectItem>
                     ))}
                   </SelectContent>
