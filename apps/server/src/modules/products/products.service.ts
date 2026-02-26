@@ -5,6 +5,8 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '@/common/prisma/prisma.service';
+import { ActivityLogService } from '@/modules/activity-log/activity-log.service';
+import { PushNotificationService } from '@/modules/notifications/push-notification.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { getCompanyIdFromOrganization } from '@/common/helpers/organization.helper';
@@ -16,6 +18,8 @@ export class ProductsService {
   constructor(
     private prisma: PrismaService,
     private uploadService: UploadService,
+    private activityLog: ActivityLogService,
+    private pushNotification: PushNotificationService,
   ) {}
 
   /**
@@ -97,7 +101,12 @@ export class ProductsService {
     return product;
   }
 
-  async update(id: number, updateProductDto: UpdateProductDto, organizationId: number) {
+  async update(
+    id: number,
+    updateProductDto: UpdateProductDto,
+    organizationId: number,
+    userId?: number,
+  ) {
     // Verificar que el producto existe y pertenece a la organización
     const existingProduct = await this.findOne(id, organizationId);
 
@@ -129,10 +138,51 @@ export class ProductsService {
       }
     }
 
-    return this.prisma.product.update({
+    const updated = await this.prisma.product.update({
       where: { id },
       data: updateProductDto,
     });
+
+    // Alertas: si el stock quedó por debajo del mínimo, notificar a Super Admins
+    const newStock = updated.stock;
+    const minStock = updated.minStock ?? 5;
+    if (newStock < minStock) {
+      const org = await this.prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { nombre: true },
+      }).catch(() => null);
+      this.pushNotification
+        .notifyStockBajo({
+          organizationName: org?.nombre ?? 'Organización',
+          productName: updated.name,
+          productId: id,
+          stockActual: newStock,
+          minStock,
+        })
+        .catch(() => {});
+    }
+
+    // Auditoría: cambio de precio (venta o costo)
+    if (userId != null) {
+      const oldSale = Number(existingProduct.salePrice);
+      const newSale = updateProductDto.salePrice != null ? Number(updateProductDto.salePrice) : oldSale;
+      const oldCost = Number(existingProduct.costPrice);
+      const newCost = updateProductDto.costPrice != null ? Number(updateProductDto.costPrice) : oldCost;
+      if (oldSale !== newSale || oldCost !== newCost) {
+        await this.activityLog.log({
+          organizationId,
+          userId,
+          action: 'PRODUCT_PRICE_UPDATE',
+          entityType: 'product',
+          entityId: String(id),
+          oldValue: { salePrice: oldSale, costPrice: oldCost },
+          newValue: { salePrice: newSale, costPrice: newCost },
+          summary: `${existingProduct.name}: precio venta ${oldSale} → ${newSale}${oldCost !== newCost ? `, costo ${oldCost} → ${newCost}` : ''}`,
+        });
+      }
+    }
+
+    return updated;
   }
 
   async remove(id: number, organizationId: number) {
@@ -157,6 +207,37 @@ export class ProductsService {
     }
 
     return product;
+  }
+
+  /**
+   * Lista productos con stock por debajo del mínimo (para alertas en web/app).
+   */
+  async getAlertasStock(organizationId: number) {
+    const products = await this.prisma.product.findMany({
+      where: {
+        organizationId,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        name: true,
+        sku: true,
+        stock: true,
+        minStock: true,
+        salePrice: true,
+      },
+    });
+    const minStockDefault = 5;
+    return products
+      .filter((p) => p.stock < (p.minStock ?? minStockDefault))
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        sku: p.sku,
+        stock: p.stock,
+        minStock: p.minStock ?? minStockDefault,
+        salePrice: Number(p.salePrice),
+      }));
   }
 
   /**

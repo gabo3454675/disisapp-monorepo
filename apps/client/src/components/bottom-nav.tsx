@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { Grid2x2, ShoppingCart, Box, MoreVertical, Users, FileText, CreditCard, DollarSign, Settings, LogOut, Car, PackageMinus, History } from 'lucide-react';
+import { Grid2x2, ShoppingCart, Box, MoreVertical, Users, FileText, CreditCard, DollarSign, Settings, LogOut, Car, PackageMinus, History, BarChart3, Wallet, AlertTriangle, TrendingUp } from 'lucide-react';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import {
@@ -21,25 +21,30 @@ import {
 } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 import { usePermission } from '@/hooks/usePermission';
+import { canShowNavItem } from '@/hooks/useNavByRole';
 import { useAuthStore } from '@/store/useAuthStore';
 import { apiClient } from '@/lib/api';
 
 const navigationItems = [
-  { id: 'dashboard', label: 'Dashboard', icon: Grid2x2, href: '/' },
-  { id: 'pos', label: 'POS', icon: ShoppingCart, href: '/pos' },
-  { id: 'products', label: 'Inventario', icon: Box, href: '/products' },
+  { id: 'dashboard', label: 'Dashboard', icon: Grid2x2, href: '/', permission: 'canViewDashboard' as const },
+  { id: 'pos', label: 'POS', icon: ShoppingCart, href: '/pos', permission: 'canManageCustomers' as const },
+  { id: 'products', label: 'Inventario', icon: Box, href: '/products', permission: 'canManageProducts' as const },
 ];
 
-// Enlaces adicionales que aparecen en el menú "Más"
+// Enlaces adicionales que aparecen en el menú "Más" (filtrados por rol)
 const additionalMenuItems = [
-  { id: 'customers', label: 'Clientes', icon: Users, href: '/customers', permission: 'canManageCustomers' },
-  { id: 'invoices', label: 'Facturas', icon: FileText, href: '/invoices', permission: 'canManageCustomers' },
-  { id: 'history', label: 'Historial de Ventas', icon: History, href: '/history', permission: 'canManageCustomers' },
-  { id: 'credits', label: 'Cuentas por Cobrar', icon: CreditCard, href: '/credits', permission: 'canManageCustomers' },
-  { id: 'expenses', label: 'Gastos', icon: DollarSign, href: '/expenses', permission: 'canManageExpenses' },
-  { id: 'movements', label: 'Movimientos inventario', icon: PackageMinus, href: '/inventory/movements', permission: 'canManageInventory' },
-  { id: 'inspections', label: 'Inspección vehículo', icon: Car, href: '/inspections', permission: 'canManageInventory' },
-  { id: 'settings', label: 'Configuración', icon: Settings, href: '/settings', permission: 'canManageTeam' },
+  { id: 'customers', label: 'Clientes', icon: Users, href: '/customers', permission: 'canManageCustomers' as const },
+  { id: 'invoices', label: 'Facturas', icon: FileText, href: '/invoices', permission: 'canManageCustomers' as const },
+  { id: 'history', label: 'Historial de Ventas', icon: History, href: '/history', permission: 'canManageCustomers' as const },
+  { id: 'cierre-caja', label: 'Cierre de caja', icon: Wallet, href: '/cierre-caja', permission: 'canManageCustomers' as const },
+  { id: 'credits', label: 'Cuentas por Cobrar', icon: CreditCard, href: '/credits', permission: 'canManageCustomers' as const },
+  { id: 'expenses', label: 'Gastos', icon: DollarSign, href: '/expenses', permission: 'canManageExpenses' as const },
+  { id: 'alertas-stock', label: 'Alertas inventario', icon: AlertTriangle, href: '/alertas-stock', permission: 'canManageInventory' as const },
+  { id: 'tasas', label: 'Tasas BCV / Diferencial', icon: TrendingUp, href: '/tasas', permission: 'canManageExpenses' as const },
+  { id: 'movements', label: 'Movimientos inventario', icon: PackageMinus, href: '/inventory/movements', permission: 'canManageInventory' as const },
+  { id: 'autoconsumo', label: 'Autoconsumo', icon: BarChart3, href: '/autoconsumo', permission: 'canManageInventory' as const },
+  { id: 'inspections', label: 'Inspección vehículo', icon: Car, href: '/inspections', permission: 'canManageInventory' as const },
+  { id: 'settings', label: 'Configuración', icon: Settings, href: '/settings', permission: 'canManageTeam' as const },
 ];
 
 export default function BottomNav() {
@@ -102,32 +107,24 @@ export default function BottomNav() {
     if (pathname.startsWith('/pos')) return 'pos';
     if (pathname.startsWith('/products')) return 'products';
     if (pathname.startsWith('/inventory/movements')) return 'movements';
+    if (pathname.startsWith('/autoconsumo')) return 'autoconsumo';
     if (pathname.startsWith('/inventory')) return 'products';
     return 'dashboard';
   };
 
   const activeItem = getActiveItem();
 
-  // Filtrar items adicionales basados en permisos (ADMIN y SUPER_ADMIN ven Configuración)
-  const role = String(permissions.role || '').toUpperCase();
   const currentOrgName = (currentOrg as { name?: string } | null)?.name ?? '';
+  const role = String(permissions.role || '').toUpperCase();
   const canSeeInspections =
-    !!user?.isSuperAdmin ||
-    (currentOrgName === 'Davean' && (role === 'ADMIN' || role === 'OPERATOR'));
-  const filteredAdditionalItems = additionalMenuItems.filter((item) => {
-    if (item.id === 'inspections') {
-      return canSeeInspections;
-    }
-    if (item.permission) {
-      const permissionKey = item.permission as keyof typeof permissions;
-      const hasPermission = permissions[permissionKey] === true;
-      if (item.id === 'settings') {
-        return hasPermission || role === 'ADMIN' || role === 'SUPER_ADMIN';
-      }
-      return hasPermission;
-    }
-    return true;
-  });
+    !!user?.isSuperAdmin || currentOrgName === 'Davean';
+
+  const visibleMainNav = navigationItems.filter((item) =>
+    canShowNavItem(item, permissions, { canSeeInspections }),
+  );
+  const filteredAdditionalItems = additionalMenuItems.filter((item) =>
+    canShowNavItem(item, permissions, { canSeeInspections }),
+  );
 
   const handleMenuItemClick = (href: string) => {
     router.push(href);
@@ -143,13 +140,13 @@ export default function BottomNav() {
   return (
     <nav className="fixed bottom-0 left-0 right-0 lg:hidden bg-card border-t border-border z-50">
       <div className="flex items-center justify-around h-20 px-2">
-        {navigationItems.map((item) => (
-          <Button
+        {visibleMainNav.map((item) => (
+            <Button
             key={item.id}
             variant="ghost"
             size="icon"
             className={cn(
-              'h-10 w-10 rounded-lg',
+              'min-h-[44px] min-w-[44px] h-12 w-12 rounded-lg',
               activeItem === item.id
                 ? 'bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary'
                 : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
@@ -166,7 +163,7 @@ export default function BottomNav() {
               variant="ghost"
               size="icon"
               className={cn(
-                'h-10 w-10 rounded-lg',
+                'min-h-[44px] min-w-[44px] h-12 w-12 rounded-lg',
                 isSheetOpen
                   ? 'bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary'
                   : 'text-muted-foreground hover:text-foreground hover:bg-secondary'

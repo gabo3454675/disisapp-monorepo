@@ -499,6 +499,21 @@ export class TenantsService {
   }
 
   /**
+   * Auditoría de acciones (Activity Log): quién cambió precio, eliminó factura, autoconsumo, etc.
+   */
+  async getActivityLog(organizationId: number, limit = 100) {
+    const logs = await this.prisma.activityLog.findMany({
+      where: { organizationId },
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(limit, 200),
+      include: {
+        user: { select: { id: true, email: true, fullName: true } },
+      },
+    });
+    return logs;
+  }
+
+  /**
    * Crea una nueva organización
    * SOLO el Super Admin puede crear organizaciones
    */
@@ -603,5 +618,151 @@ export class TenantsService {
     }
 
     return { purged };
+  }
+
+  /**
+   * Historial de tasas BCV para la organización (auditoría y reportes).
+   * Query: desde?, hasta?, limit?
+   */
+  async getTasasHistorial(
+    organizationId: number,
+    opts?: { desde?: string; hasta?: string; limit?: number },
+  ) {
+    const limit = Math.min(opts?.limit ?? 200, 500);
+    const where: {
+      organizationId: number;
+      effectiveAt?: { gte?: Date; lte?: Date };
+    } = { organizationId };
+    if (opts?.desde || opts?.hasta) {
+      where.effectiveAt = {};
+      if (opts.desde) {
+        where.effectiveAt.gte = new Date(opts.desde);
+      }
+      if (opts.hasta) {
+        const h = new Date(opts.hasta);
+        h.setHours(23, 59, 59, 999);
+        where.effectiveAt.lte = h;
+      }
+    }
+    const list = await this.prisma.tasaHistorica.findMany({
+      where,
+      orderBy: { effectiveAt: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        rate: true,
+        source: true,
+        effectiveAt: true,
+        createdAt: true,
+      },
+    });
+    return list.map((t) => ({
+      id: t.id,
+      rate: Number(t.rate),
+      source: t.source,
+      effectiveAt: t.effectiveAt,
+      createdAt: t.createdAt,
+    }));
+  }
+
+  /**
+   * Reporte Ganancia/Pérdida por Diferencial Cambiario.
+   * Por cada día en el rango: tasa utilizada (promedio), total facturado USD/BS y número de facturas.
+   * Opcional: diferencia entre tasa del día y tasa de cierre para estimar diferencial.
+   */
+  async getReporteDiferencialCambiario(
+    organizationId: number,
+    desde: string,
+    hasta: string,
+  ) {
+    const desdeDate = new Date(desde);
+    const hastaDate = new Date(hasta);
+    hastaDate.setHours(23, 59, 59, 999);
+
+    const [tasas, facturas] = await Promise.all([
+      this.prisma.tasaHistorica.findMany({
+        where: {
+          organizationId,
+          effectiveAt: { gte: desdeDate, lte: hastaDate },
+        },
+        orderBy: { effectiveAt: 'asc' },
+        select: { rate: true, effectiveAt: true },
+      }),
+      this.prisma.invoice.findMany({
+        where: {
+          organizationId,
+          createdAt: { gte: desdeDate, lte: hastaDate },
+          status: { not: 'CANCELLED' },
+        },
+        select: {
+          id: true,
+          totalAmount: true,
+          montoUsd: true,
+          montoBs: true,
+          createdAt: true,
+          tasaHistoricaId: true,
+          tasaHistorica: { select: { rate: true } },
+        },
+      }),
+    ]);
+
+    // Agrupar por día (YYYY-MM-DD)
+    const byDay: Record<
+      string,
+      {
+        date: string;
+        tasaPromedio: number;
+        tasaMin: number;
+        tasaMax: number;
+        totalUsd: number;
+        totalBs: number;
+        numFacturas: number;
+      }
+    > = {};
+
+    const pushDay = (dateStr: string, tasa: number, totalUsd: number, totalBs: number) => {
+      if (!byDay[dateStr]) {
+        byDay[dateStr] = {
+          date: dateStr,
+          tasaPromedio: 0,
+          tasaMin: tasa,
+          tasaMax: tasa,
+          totalUsd: 0,
+          totalBs: 0,
+          numFacturas: 0,
+        };
+      }
+      const d = byDay[dateStr];
+      d.totalUsd += totalUsd;
+      d.totalBs += totalBs;
+      d.numFacturas += 1;
+      const prevProm = d.tasaPromedio * (d.numFacturas - 1);
+      d.tasaPromedio = (prevProm + tasa) / d.numFacturas;
+      d.tasaMin = Math.min(d.tasaMin, tasa);
+      d.tasaMax = Math.max(d.tasaMax, tasa);
+    };
+
+    for (const inv of facturas) {
+      const montoUsd = Number(inv.montoUsd ?? 0);
+      const montoBs = Number(inv.montoBs ?? 0);
+      const tasa = inv.tasaHistorica ? Number(inv.tasaHistorica.rate) : 0;
+      const dateStr = inv.createdAt.toISOString().slice(0, 10);
+      if (montoUsd > 0 || montoBs > 0) {
+        pushDay(dateStr, tasa, montoUsd, montoBs);
+      } else {
+        pushDay(dateStr, tasa, Number(inv.totalAmount), 0);
+      }
+    }
+
+    const sorted = Object.values(byDay).sort(
+      (a, b) => a.date.localeCompare(b.date),
+    );
+    return {
+      desde,
+      hasta,
+      resumenPorDia: sorted,
+      totalFacturas: facturas.length,
+      tasasEnRango: tasas.length,
+    };
   }
 }

@@ -45,6 +45,8 @@ interface AuthState {
   superAdminOrganizations: Organization[];
   _hasHydrated: boolean;
   setAuth: (user: User, token: string) => void;
+  /** Actualiza solo el token (ej. tras POST /auth/switch-organization). El tenantId va en el JWT. */
+  setToken: (token: string) => void;
   clearAuth: () => void;
   selectCompany: (companyId: number) => void; // Legacy
   selectOrganization: (organizationId: number) => void; // Nuevo
@@ -94,6 +96,24 @@ export const useAuthStore = create<AuthState>()(
           selectedCompanyId: companies.length > 0 ? companies[0].id : defaultOrgId, // Compatibilidad con dashboard/api
           ...(superAdminOrgs && { superAdminOrganizations: superAdminOrgs }),
         });
+      },
+      setToken: (token: string) => {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('auth_token', token);
+        }
+        set({ token });
+        if (typeof window !== 'undefined') {
+          const currentStorage = localStorage.getItem('auth-storage');
+          if (currentStorage) {
+            try {
+              const storageData = JSON.parse(currentStorage);
+              storageData.state.token = token;
+              localStorage.setItem('auth-storage', JSON.stringify(storageData));
+            } catch {
+              // Error silencioso
+            }
+          }
+        }
       },
       clearAuth: () => {
         if (typeof window !== 'undefined') {

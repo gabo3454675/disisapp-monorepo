@@ -33,6 +33,9 @@ model User {
   tasksCreated   Task[] @relation("TasksCreated")         // Tareas que creó (admin)
   auditLogs      AuditLog[]                              // Acciones sensibles registradas
   inventoryMovements InventoryMovement[] // Movimientos de inventario realizados
+  cierresCaja    CierreCaja[]            // Cierres de caja que realizó (cajero)
+  activityLogs  ActivityLog[]            // Auditoría: quién cambió precio, eliminó factura, etc.
+  fcmTokens     FcmToken[]               // Tokens FCM para notificaciones push (Super Admin)
 
   @@index([isSuperAdmin])
   @@map("users")
@@ -127,6 +130,10 @@ model Organization {
   customerCredits  CustomerCredit[] // Cuentas de crédito por organización
   inventoryMovements InventoryMovement[] // Movimientos de inventario
   vehicleInspections VehicleInspection[] // Inspecciones de vehículos (Davean)
+  cierresCaja        CierreCaja[]       // Cierres de caja (X-Report / Z-Report)
+  tasasHistoricas    TasaHistorica[]    // Tasas BCV por momento (auditoría)
+  activityLogs       ActivityLog[]     // Auditoría de acciones (precio, factura, autoconsumo)
+  pagos              Pago[]            // Pagos por factura (tesorería, blindaje)
 
   @@index([slug])
   @@map("organizations")
@@ -234,29 +241,40 @@ enum MovementType {
   USO_TALLER
 }
 
+// Clasificación para dashboard: merma, muestras, uso operativo
+enum ConsumptionReason {
+  MERMA           // Merma (vencido, dañado)
+  MUESTRAS        // Muestras
+  USO_OPERATIVO   // Uso interno / taller
+}
+
 // ------------------------------------------
 // MOVIMIENTOS DE INVENTARIO
 // ------------------------------------------
 
 model InventoryMovement {
-  id          Int          @id @default(autoincrement())
-  type        MovementType // Tipo de movimiento
-  quantity    Int          // Cantidad (positiva o negativa según el tipo)
-  reason      String?      // Detalles opcionales del movimiento
-  productId   Int          // Producto afectado
-  userId      Int          // Usuario que realizó el movimiento
-  tenantId    Int          // Organización (Multi-Tenant)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id                    Int                @id @default(autoincrement())
+  type                  MovementType       // Tipo de movimiento
+  quantity              Int                // Cantidad (positiva o negativa según el tipo)
+  reason                String?           // Detalles opcionales del movimiento
+  productId             Int                // Producto afectado
+  userId                Int                // Responsable del movimiento
+  tenantId              Int                // Organización (Multi-Tenant)
+  unitCostAtTransaction Decimal?           @db.Decimal(10, 2) // Costo unitario al momento (trazabilidad)
+  consumptionReason     ConsumptionReason? // Clasificación: merma, muestras, uso operativo
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
 
   product    Product      @relation(fields: [productId], references: [id])
   user       User         @relation(fields: [userId], references: [id])
   tenant     Organization @relation(fields: [tenantId], references: [id])
+  expense    Expense?     @relation("MovementExpense") // Doble asiento: gasto asociado
 
   @@index([productId])
   @@index([userId])
   @@index([tenantId])
   @@index([type])
+  @@index([consumptionReason])
   @@index([createdAt])
   @@map("inventory_movements")
 }
@@ -280,6 +298,60 @@ model VehicleInspection {
   @@index([tenantId])
   @@index([createdAt])
   @@map("vehicle_inspections")
+}
+
+// ------------------------------------------
+// CIERRE DE CAJA (X-Report / Z-Report)
+// ------------------------------------------
+
+enum CierreCajaEstado {
+  OPEN   // Turno abierto
+  CLOSED // Z-Report cerrado
+}
+
+model CierreCaja {
+  id              Int             @id @default(autoincrement())
+  tenantId        Int             // Blindaje multi-tenant
+  userId          Int             // Quién cierra la caja (cajero)
+  fechaApertura   DateTime        // Inicio del turno
+  fechaCierre     DateTime        @default(now()) // Cierre (Z-Report)
+  montoInicial    Decimal         @db.Decimal(15, 2) // Con cuánto empezó el turno
+  ventasEfectivo  Decimal         @db.Decimal(15, 2) @default(0) // Efectivo USD (para monto esperado)
+  ventasDigitales Decimal         @db.Decimal(15, 2) @default(0) // Resto (compat)
+  // Conciliación por moneda (tesorería bimoneda)
+  ventasEfectivoUsd  Decimal      @db.Decimal(15, 2) @default(0) // Total Efectivo $
+  ventasEfectivoBs   Decimal      @db.Decimal(15, 2) @default(0) // Total Efectivo Bs
+  ventasPagoMovil    Decimal      @db.Decimal(15, 2) @default(0) // Pago Móvil (Bs)
+  ventasPos          Decimal      @db.Decimal(15, 2) @default(0) // Puntos de venta: Zelle, tarjeta, etc.
+  autoconsumos    Decimal         @db.Decimal(15, 2) @default(0) // Salida no monetaria (mermas, muestras)
+  montoFisico     Decimal?        @db.Decimal(15, 2) // Efectivo USD contado (compat)
+  montoFisicoUsd  Decimal?        @db.Decimal(15, 2) // Efectivo USD contado
+  montoFisicoVes  Decimal?        @db.Decimal(15, 2) // Efectivo Bs contado
+  diferencia      Decimal?        @db.Decimal(15, 2) // Conciliación USD (compat)
+  totalUsd        Decimal?        @db.Decimal(15, 2) // Total esperado en USD (montoInicial + efectivo USD)
+  totalVes        Decimal?        @db.Decimal(15, 2) // Total esperado en Bs (efectivo Bs + pago móvil)
+  diferenciaUsd   Decimal?        @db.Decimal(15, 2) // totalUsd - montoFisicoUsd
+  diferenciaVes   Decimal?        @db.Decimal(15, 2) // totalVes - montoFisicoVes
+  impreso         Boolean         @default(false)    // Ticket Z impreso
+  observaciones   String?         // Notas del cierre
+  estado          CierreCajaEstado @default(OPEN)
+  publicToken     String?         @unique // Token para QR y resumen digital (generado al cerrar)
+  tasaHistoricaId  Int?            // Tasa BCV al momento del cierre (auditoría)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  tenant  Organization @relation(fields: [tenantId], references: [id])
+  user    User         @relation(fields: [userId], references: [id])
+  tasaHistorica TasaHistorica? @relation("CierreTasa", fields: [tasaHistoricaId], references: [id])
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([estado])
+  @@index([publicToken])
+  @@index([fechaApertura])
+  @@index([fechaCierre])
+  @@index([tasaHistoricaId])
+  @@map("cierres_caja")
 }
 
 // ------------------------------------------
@@ -370,25 +442,79 @@ enum PaymentStatus {
   pending_credit  // Vendida a crédito, pendiente de cobro
 }
 
+// Origen del dinero: efectivo USD, efectivo Bs, Pago Móvil, Zelle, etc.
+enum PaymentLineMethod {
+  CASH_USD     // Efectivo en dólares
+  CASH_BS      // Efectivo en bolívares
+  PAGO_MOVIL   // Pago Móvil (Bs)
+  ZELLE        // Zelle (USD)
+  CARD         // Tarjeta (USD/BS según caso)
+  CREDIT       // Crédito al cliente
+}
+
+enum PaymentLineCurrency {
+  USD
+  VES
+}
+
+model InvoicePaymentLine {
+  id         Int                   @id @default(autoincrement())
+  invoiceId  Int
+  method     PaymentLineMethod     // CASH_USD, CASH_BS, PAGO_MOVIL, ZELLE, CARD, CREDIT
+  amount     Decimal               @db.Decimal(15, 2)
+  currency   PaymentLineCurrency   // USD o VES
+  createdAt  DateTime              @default(now())
+
+  invoice    Invoice               @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@map("invoice_payment_lines")
+}
+
+// Pagos canónicos: origen del dinero por factura (tesorería y cierre bimoneda).
+// Método: EFECTIVO ($/Bs), PUNTO (tarjeta), PAGO_MOVIL, ZELLE. Blindaje por tenantId.
+model Pago {
+  id         String   @id @default(uuid())
+  facturaId  Int
+  moneda     String   // "USD" o "VES"
+  metodo     String   // "EFECTIVO", "PUNTO", "PAGO_MOVIL", "ZELLE"
+  monto      Decimal  @db.Decimal(15, 2)  // Monto real en esa moneda
+  tasaCambio Decimal  @db.Decimal(12, 4)  // Tasa BCV al momento del pago
+  tenantId   Int      // Blindaje multi-tenant
+  createdAt  DateTime @default(now())
+
+  invoice    Invoice     @relation(fields: [facturaId], references: [id], onDelete: Cascade)
+  tenant     Organization @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([facturaId])
+  @@index([tenantId])
+  @@index([createdAt])
+  @@map("pagos")
+}
+
 model Invoice {
   id            Int           @id @default(autoincrement())
   companyId     Int           // Legacy: mantener para compatibilidad
   organizationId Int?         // Nueva relación Multi-Tenant
   customerId    Int?
   sellerId      Int           // El usuario que creó la factura
-  totalAmount   Decimal       @db.Decimal(15, 2)
+  totalAmount   Decimal       @db.Decimal(15, 2)   // Total en USD (referencia para reportes)
   status        InvoiceStatus @default(PAID)
-  paymentMethod String        @default("CASH") // CASH, ZELLE, CARD, CREDIT
-  paymentStatus PaymentStatus @default(paid) // paid, partial, pending_credit
+  paymentMethod String        @default("CASH")      // Legacy: CASH, ZELLE, CARD, CREDIT (cuando no hay paymentLines)
+  paymentStatus PaymentStatus @default(paid)       // paid, partial, pending_credit
+  // Registro dual multimoneda: origen exacto del dinero (flujo de caja verídico)
+  montoUsd       Decimal?    @db.Decimal(15, 2)   // Total pagado en USD
+  montoBs        Decimal?    @db.Decimal(15, 2)   // Total pagado en Bs
+  tasaReferencia  Decimal?    @db.Decimal(12, 4)   // Tasa BCV al momento de la venta
   notes         String?
   pdfUrl        String?       // Link al PDF generado
   publicToken   String?       @unique // Token UUID para acceso público a la factura
   // Tracking de pagos desde link público
-  markedAsPaidByClient Boolean @default(false) // Si el cliente marcó como pagada desde el link
-  markedAsPaidAt       DateTime? // Cuándo el cliente marcó como pagada
-  markedAsPaidBy       String? // Nombre/email del cliente que marcó como pagada
-  viewCount            Int     @default(0) // Contador de veces que se abrió el link público
-  lastViewedAt        DateTime? // Última vez que se abrió el link
+  markedAsPaidByClient Boolean @default(false)
+  markedAsPaidAt       DateTime?
+  markedAsPaidBy       String?
+  viewCount            Int     @default(0)
+  lastViewedAt        DateTime?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
@@ -397,15 +523,20 @@ model Invoice {
   customer      Customer?     @relation(fields: [customerId], references: [id])
   seller        User          @relation(fields: [sellerId], references: [id])
   items         InvoiceItem[]
-  tasks         Task[]        // Tareas asociadas a esta factura (opcional)
-  creditTransactions CreditTransaction[] // Abonos/cargos asociados
+  paymentLines  InvoicePaymentLine[]  // Legacy / compat
+  pagos         Pago[]                // Pagos canónicos (tesorería)
+  tasks         Task[]
+  creditTransactions CreditTransaction[]
+  tasaHistoricaId    Int?
+  tasaHistorica      TasaHistorica?   @relation("InvoiceTasa", fields: [tasaHistoricaId], references: [id])
 
   @@index([companyId])
   @@index([organizationId])
-  @@index([organizationId, createdAt]) // Consultas históricas por rango de fechas
+  @@index([organizationId, createdAt])
   @@index([publicToken])
   @@index([markedAsPaidByClient])
   @@index([paymentStatus])
+  @@index([tasaHistoricaId])
   @@map("invoices")
 }
 
@@ -481,28 +612,31 @@ enum ExpenseStatus {
 }
 
 model Expense {
-  id              Int            @id @default(autoincrement())
-  companyId       Int            // Legacy: mantener para compatibilidad
-  organizationId  Int?           // Nueva relación Multi-Tenant
-  date            DateTime       @default(now())
-  amount          Decimal        @db.Decimal(15, 2)
-  description     String
-  referenceNumber String?        // Número de factura del proveedor
-  status          ExpenseStatus  @default(PENDING)
-  supplierId      Int?
-  categoryId      Int
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  id                  Int            @id @default(autoincrement())
+  companyId           Int            // Legacy: mantener para compatibilidad
+  organizationId      Int?           // Nueva relación Multi-Tenant
+  date                DateTime       @default(now())
+  amount              Decimal        @db.Decimal(15, 2)
+  description         String
+  referenceNumber     String?        // Número de factura del proveedor
+  status              ExpenseStatus  @default(PENDING)
+  supplierId          Int?
+  categoryId          Int
+  inventoryMovementId Int?           @unique // Doble asiento: gasto generado por autoconsumo/merma
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
 
-  company       Company         @relation(fields: [companyId], references: [id])
-  organization  Organization?   @relation(fields: [organizationId], references: [id])
-  supplier      Supplier?       @relation(fields: [supplierId], references: [id])
-  category      ExpenseCategory @relation(fields: [categoryId], references: [id])
+  company            Company          @relation(fields: [companyId], references: [id])
+  organization       Organization?    @relation(fields: [organizationId], references: [id])
+  supplier           Supplier?        @relation(fields: [supplierId], references: [id])
+  category           ExpenseCategory  @relation(fields: [categoryId], references: [id])
+  inventoryMovement  InventoryMovement? @relation("MovementExpense", fields: [inventoryMovementId], references: [id])
 
   @@index([companyId])
   @@index([organizationId])
   @@index([date])
   @@index([categoryId])
+  @@index([inventoryMovementId])
   @@map("expenses")
 }
 
@@ -576,6 +710,71 @@ model Task {
   @@index([category])
   @@index([dueDate])
   @@map("tasks")
+}
+
+// ------------------------------------------
+// TASAS HISTÓRICAS (Multi-Moneda / Venezuela - BCV)
+// Cada factura y cada cierre guarda la tasa del momento para auditoría.
+// ------------------------------------------
+model TasaHistorica {
+  id             Int       @id @default(autoincrement())
+  organizationId Int      // Organización (tenant)
+  rate           Decimal  @db.Decimal(12, 4) // Tasa USD/VES (ej. BCV)
+  source         String   @default("BCV")   // BCV, PARALELO, etc.
+  effectiveAt    DateTime @default(now())  // Momento exacto de la transacción/cierre
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoices     Invoice[]    @relation("InvoiceTasa")
+  cierresCaja  CierreCaja[] @relation("CierreTasa")
+
+  @@index([organizationId])
+  @@index([effectiveAt])
+  @@map("tasas_historicas")
+}
+
+// ------------------------------------------
+// ACTIVITY LOG (Auditoría de acciones - multi-tenant)
+// Quién cambió precio, eliminó factura, registró autoconsumo, etc.
+// ------------------------------------------
+model ActivityLog {
+  id             Int       @id @default(autoincrement())
+  organizationId Int       // Tenant
+  userId         Int       // Quién realizó la acción
+  action         String    // PRODUCT_PRICE_UPDATE, INVOICE_DELETED, AUTOCONSUMO_REGISTERED, etc.
+  entityType     String    // product, invoice, inventory_movement
+  entityId       String    // ID del recurso afectado
+  oldValue       Json?     // Valor anterior (ej: { salePrice: 10.5 })
+  newValue       Json?     // Valor nuevo
+  summary        String?   // Resumen legible para el admin
+  createdAt      DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id])
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("activity_logs")
+}
+
+// ------------------------------------------
+// FCM TOKENS (Notificaciones Push - Firebase)
+// Super Admin recibe alertas: cierre con faltante >$5, stock crítico bajo.
+// ------------------------------------------
+model FcmToken {
+  id        Int      @id @default(autoincrement())
+  userId    Int      // Usuario (típicamente Super Admin)
+  token     String   @unique // FCM device token
+  deviceInfo String? // Opcional: nombre del dispositivo
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("fcm_tokens")
 }
 
 // ------------------------------------------

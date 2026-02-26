@@ -27,7 +27,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { InvoiceDetailSheet } from '@/components/invoice-detail-sheet';
-import { Loader2, MoreVertical, FileText, Printer, Calendar, Building2, DollarSign, Receipt, Percent } from 'lucide-react';
+import { Loader2, MoreVertical, FileText, Printer, Calendar, Building2, DollarSign, Receipt } from 'lucide-react';
 import apiClient from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePermission } from '@/hooks/usePermission';
@@ -47,11 +47,20 @@ interface Customer {
   taxId?: string | null;
 }
 
+interface PaymentLine {
+  method: string;
+  amount: number;
+  currency: string;
+}
+
 interface HistoryInvoice {
   id: number;
   totalAmount: number;
   status: string;
   paymentMethod: string;
+  montoUsd?: number | null;
+  montoBs?: number | null;
+  paymentLines?: PaymentLine[];
   createdAt: string;
   customer: Customer | null;
   items: InvoiceItem[];
@@ -60,7 +69,6 @@ interface HistoryInvoice {
 interface DailySummaryItem {
   date: string;
   totalSales: number;
-  totalIgft: number;
   byPaymentMethod: Record<string, number>;
 }
 
@@ -169,19 +177,32 @@ export default function HistoryPage() {
     }).format(new Date(dateString));
   };
 
-  const formatPaymentMethod = (method: string) => {
-    const m = (method || 'CASH').toUpperCase();
-    const map: Record<string, string> = {
-      CASH: 'Efectivo',
-      ZELLE: 'Zelle',
-      CARD: 'Tarjeta',
-      CREDIT: 'Crédito',
-    };
-    return map[m] ?? method;
+  const paymentMethodLabels: Record<string, string> = {
+    CASH: 'Efectivo $',
+    CASH_USD: 'Efectivo $',
+    CASH_BS: 'Efectivo Bs',
+    PAGO_MOVIL: 'Pago Móvil Bs',
+    ZELLE: 'Zelle $',
+    CARD: 'Tarjeta',
+    CREDIT: 'Crédito',
+    MIXED: 'Mixto',
+  };
+
+  const getPaymentMethodDisplay = (inv: HistoryInvoice): string => {
+    if (inv.paymentLines && inv.paymentLines.length > 0) {
+      return inv.paymentLines
+        .map((p) => {
+          const label = paymentMethodLabels[p.method] ?? p.method;
+          const sym = p.currency === 'VES' ? 'Bs' : '$';
+          return `${label} ${Number(p.amount).toFixed(2)} ${sym}`;
+        })
+        .join(' + ');
+    }
+    const m = (inv.paymentMethod || 'CASH').toUpperCase();
+    return paymentMethodLabels[m] ?? inv.paymentMethod ?? '—';
   };
 
   const totalSalesPeriod = data?.invoices?.reduce((sum, inv) => sum + Number(inv.totalAmount), 0) ?? 0;
-  const totalIgftPeriod = data?.dailySummary?.reduce((sum, d) => sum + d.totalIgft, 0) ?? 0;
   const invoicesCount = data?.invoices?.length ?? 0;
 
   if (!canManageCustomers) {
@@ -269,8 +290,8 @@ export default function HistoryPage() {
           </CardContent>
         </Card>
 
-        {/* Tarjetas de resumen del periodo */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* Tarjetas de resumen del periodo (solo cobro real, sin IVA/IGTF) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
@@ -280,17 +301,6 @@ export default function HistoryPage() {
             </CardHeader>
             <CardContent>
               <p className="text-2xl font-bold">{formatForDisplay(totalSalesPeriod)}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                <Percent className="h-4 w-4" />
-                IGTF del Periodo
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{formatForDisplay(totalIgftPeriod)}</p>
             </CardContent>
           </Card>
           <Card>
@@ -345,7 +355,7 @@ export default function HistoryPage() {
                         </span>
                       </div>
                       <p className="font-bold text-primary mb-2">{formatForDisplay(Number(invoice.totalAmount))}</p>
-                      <p className="text-xs text-muted-foreground mb-2">{formatPaymentMethod(invoice.paymentMethod)}</p>
+                      <p className="text-xs text-muted-foreground mb-2">{getPaymentMethodDisplay(invoice)}</p>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="outline" size="sm">
@@ -386,7 +396,7 @@ export default function HistoryPage() {
                           <TableCell className="font-semibold">
                             {formatForDisplay(Number(invoice.totalAmount))}
                           </TableCell>
-                          <TableCell>{formatPaymentMethod(invoice.paymentMethod)}</TableCell>
+                          <TableCell>{getPaymentMethodDisplay(invoice)}</TableCell>
                           <TableCell>
                             <span
                               className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${

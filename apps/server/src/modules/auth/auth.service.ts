@@ -216,11 +216,13 @@ export class AuthService {
     // Validar y obtener datos completos como en login
     const validatedUser = await this.validateUser(dto.email, dto.newPassword);
 
-    const payload = {
+    const organizationId = validatedUser.organizations?.[0]?.id ?? null;
+    const payload: { email: string; sub: number; isSuperAdmin: boolean; organizationId?: number } = {
       email: validatedUser.email,
       sub: validatedUser.id,
       isSuperAdmin: validatedUser.isSuperAdmin ?? false,
     };
+    if (organizationId != null) payload.organizationId = organizationId;
 
     return {
       access_token: this.jwtService.sign(payload),
@@ -238,11 +240,14 @@ export class AuthService {
   async login(loginDto: LoginDto) {
     const user = await this.validateUser(loginDto.email, loginDto.password);
 
-    const payload = {
+    // Tenant en JWT: organización activa (primera de la lista). El backend no confía en el frontend.
+    const organizationId = user.organizations?.[0]?.id ?? null;
+    const payload: { email: string; sub: number; isSuperAdmin: boolean; organizationId?: number } = {
       email: user.email,
       sub: user.id,
       isSuperAdmin: user.isSuperAdmin ?? false,
     };
+    if (organizationId != null) payload.organizationId = organizationId;
 
     return {
       access_token: this.jwtService.sign(payload),
@@ -251,9 +256,49 @@ export class AuthService {
         email: user.email,
         fullName: user.fullName,
         isSuperAdmin: user.isSuperAdmin,
-        organizations: user.organizations, // Nuevo sistema
-        companies: user.companies, // Legacy - mantener para compatibilidad
+        organizations: user.organizations,
+        companies: user.companies,
       },
+    };
+  }
+
+  /**
+   * Cambia la organización activa y devuelve un nuevo JWT con ese tenantId.
+   * Valida que el usuario sea miembro de la organización (o SUPER_ADMIN).
+   */
+  async switchOrganization(userId: number, organizationId: number) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, isSuperAdmin: true },
+    });
+    if (!user) throw new UnauthorizedException('Usuario no encontrado');
+
+    const membership = await this.prisma.member.findFirst({
+      where: {
+        userId,
+        organizationId,
+        status: 'ACTIVE',
+      },
+    });
+    const isSuperAdmin = user.isSuperAdmin ?? false;
+    if (!membership && !isSuperAdmin) {
+      throw new ForbiddenException('No tienes acceso a esta organización');
+    }
+
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+    });
+    if (!org) throw new BadRequestException('Organización no encontrada');
+
+    const payload = {
+      email: user.email,
+      sub: user.id,
+      isSuperAdmin,
+      organizationId,
+    };
+    return {
+      access_token: this.jwtService.sign(payload),
+      organizationId,
     };
   }
 

@@ -1,14 +1,18 @@
-import { IsInt, IsOptional, IsString, Min, MaxLength } from 'class-validator';
+import { IsInt, IsOptional, IsString, Min, MaxLength, IsNumber, IsEnum } from 'class-validator';
 import { IsIn } from 'class-validator';
+import { ConsumptionReason } from '@prisma/client';
 
-/** Tipos de salida permitidos para este endpoint (Autoconsumo y Mermas). */
+/** Tipos de salida permitidos (Autoconsumo, Mermas, Uso taller). */
 export const OUTFLOW_MOVEMENT_TYPES = [
   'AUTOCONSUMO',
   'MERMA_VENCIDO',
   'MERMA_DANADO',
+  'USO_TALLER',
 ] as const;
 
 export type OutflowMovementType = (typeof OUTFLOW_MOVEMENT_TYPES)[number];
+
+export const CONSUMPTION_REASON_VALUES: ConsumptionReason[] = ['MERMA', 'MUESTRAS', 'USO_OPERATIVO'];
 
 export class CreateMovementDto {
   @IsIn(OUTFLOW_MOVEMENT_TYPES, {
@@ -28,4 +32,15 @@ export class CreateMovementDto {
   @IsString()
   @MaxLength(500, { message: 'reason no puede superar 500 caracteres' })
   reason?: string;
+
+  /** Costo unitario al momento de la transacción (trazabilidad). Si no se envía, se usa costPrice del producto. */
+  @IsOptional()
+  @IsNumber()
+  @Min(0, { message: 'unitCostAtTransaction debe ser >= 0' })
+  unitCostAtTransaction?: number;
+
+  /** Clasificación para dashboard: merma, muestras, uso operativo. */
+  @IsOptional()
+  @IsEnum(ConsumptionReason, { message: 'consumptionReason debe ser MERMA, MUESTRAS o USO_OPERATIVO' })
+  consumptionReason?: ConsumptionReason;
 }

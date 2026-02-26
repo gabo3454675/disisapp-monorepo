@@ -17,7 +17,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  async validate(payload: any) {
+  async validate(payload: { sub: number; email?: string; isSuperAdmin?: boolean; organizationId?: number }) {
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
       select: { isActive: true, isSuperAdmin: true },
@@ -29,6 +29,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       id: payload.sub,
       email: payload.email,
       isSuperAdmin: user.isSuperAdmin ?? false,
+      // TenantId solo desde JWT; el backend no confía en headers ni body.
+      tenantId: payload.organizationId,
+      organizationId: payload.organizationId,
     };
   }
 }

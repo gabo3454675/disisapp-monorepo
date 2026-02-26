@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
+import { useDebounce } from '@/hooks/useDebounce';
 import {
   Table,
   TableBody,
@@ -59,6 +60,8 @@ export default function InvoicesPage() {
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [assignModalInvoiceId, setAssignModalInvoiceId] = useState<number | null>(null);
+
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
   const fetchInvoices = useCallback(async () => {
     if (!selectedCompanyId) return;
@@ -145,14 +148,16 @@ export default function InvoicesPage() {
     }).format(new Date(dateString));
   };
 
-  const filteredInvoices = invoices.filter((invoice) => {
-    const query = searchQuery.toLowerCase();
-    return (
-      invoice.id.toString().includes(query) ||
-      invoice.customer?.name.toLowerCase().includes(query) ||
-      invoice.totalAmount.toString().includes(query)
+  const filteredInvoices = useMemo(() => {
+    const query = (debouncedSearchQuery ?? '').toLowerCase().trim();
+    if (!query) return invoices;
+    return invoices.filter(
+      (invoice) =>
+        invoice.id.toString().includes(query) ||
+        invoice.customer?.name.toLowerCase().includes(query) ||
+        invoice.totalAmount.toString().includes(query),
     );
-  });
+  }, [invoices, debouncedSearchQuery]);
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto">

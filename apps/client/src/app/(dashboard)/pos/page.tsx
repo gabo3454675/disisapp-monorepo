@@ -14,16 +14,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { useExchangeRate } from '@/hooks/useExchangeRate';
 import { db } from '@/lib/db';
 import { toast } from 'sonner';
-import {
-  round2,
-  convertToPaymentCurrency as convertToPaymentCurrencyService,
-  getIvaBaseInBs,
-  calculateIvaOnBaseInBs,
-  calculateTotalInBs,
-  calculateIgtfOnSubtotalUsd,
-  type PaymentCurrency as PaymentCurrencyType,
-  type ProductCurrency,
-} from '@/lib/currencyConversion';
+import { round2 } from '@/lib/currencyConversion';
 
 interface Product {
   id: number;
@@ -41,7 +32,7 @@ interface Product {
 }
 
 type CurrencyMode = 'BS' | 'USD';
-type PaymentMethod = 'CASH' | 'ZELLE' | 'CARD' | 'CREDIT';
+type PaymentMethod = 'CASH_USD' | 'CASH_BS' | 'PAGO_MOVIL' | 'ZELLE' | 'CARD' | 'CREDIT';
 
 interface Customer {
   id: number;
@@ -72,7 +63,7 @@ export default function POSPage() {
   const [success, setSuccess] = useState(false);
   const [lastInvoiceId, setLastInvoiceId] = useState<number | null>(null);
   const [currencyMode, setCurrencyMode] = useState<CurrencyMode>('USD');
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH_USD');
   const [customerCredit, setCustomerCredit] = useState<{
     limitAmount: number;
     currentBalance: number;
@@ -184,50 +175,21 @@ export default function POSPage() {
     setCart((prevCart) => prevCart.filter((item) => item.product.id !== productId));
   };
 
-  /**
-   * Precio unitario en la moneda de pago usando el servicio de conversión.
-   * Conversión USD→BS con la tasa configurada antes de aplicar IVA cuando pago en BS.
-   */
-  const getUnitPriceInPaymentCurrency = useMemo(() => {
-    return (product: Product): number => {
-      const price = Number(product.salePrice);
-      const productCurrency: ProductCurrency = product.salePriceCurrency === 'VES' ? 'VES' : 'USD';
-      const paymentCurrency: PaymentCurrencyType = currencyMode === 'BS' ? 'BS' : 'USD';
-      return convertToPaymentCurrencyService(price, productCurrency, paymentCurrency, tasaBcv);
-    };
-  }, [currencyMode, tasaBcv]);
-
-  /**
-   * Totales: conversión con tasa configurada y IVA 16% sobre monto en BS (cuando pago en Bolívares).
-   */
-  const { subtotal, tax, taxLabel, total } = useMemo(() => {
-    const getUnit = getUnitPriceInPaymentCurrency;
-    const sub = cart.reduce(
-      (sum, item) => sum + getUnit(item.product) * item.quantity,
+  /** Total en USD (solo cobro real, sin IVA/IGTF). */
+  const { subtotal, total } = useMemo(() => {
+    const subUsd = cart.reduce(
+      (sum, item) => sum + Number(item.product.salePrice) * item.quantity,
       0
     );
-    const subRounded = round2(sub);
-    const isExemptProduct = (p: Product) => p.isExempt === true;
+    const subRounded = round2(subUsd);
+    return { subtotal: subRounded, total: subRounded };
+  }, [cart]);
 
-    if (currencyMode === 'BS') {
-      const lineAmountsInBs = cart.map((item) => getUnit(item.product) * item.quantity);
-      const ivaBaseBs = getIvaBaseInBs(lineAmountsInBs, (i) => isExemptProduct(cart[i].product));
-      const iva = calculateIvaOnBaseInBs(ivaBaseBs);
-      return {
-        subtotal: subRounded,
-        tax: iva,
-        taxLabel: 'IVA (16%)',
-        total: calculateTotalInBs(subRounded, ivaBaseBs),
-      };
-    }
-    const igft = calculateIgtfOnSubtotalUsd(subRounded);
-    return {
-      subtotal: subRounded,
-      tax: igft,
-      taxLabel: 'IGFT (3%)',
-      total: round2(subRounded * 1.03),
-    };
-  }, [cart, currencyMode, getUnitPriceInPaymentCurrency]);
+  /** Precio unitario para mostrar (en moneda seleccionada: USD o Bs según tasa). */
+  const getUnitPriceDisplay = (product: Product) => {
+    const usd = Number(product.salePrice);
+    return currencyMode === 'BS' ? round2(usd * tasaBcv) : usd;
+  };
 
   // Procesar venta (online → API; offline → IndexedDB para sincronizar después)
   const handleCheckout = async () => {
@@ -246,9 +208,17 @@ export default function POSPage() {
     setProcessing(true);
     setSuccess(false);
 
+    const amountUsd = total;
+    const amountBs = round2(total * tasaBcv);
+    const payments =
+      paymentMethod === 'CASH_BS' || paymentMethod === 'PAGO_MOVIL'
+        ? [{ method: paymentMethod, amount: amountBs, currency: 'VES' as const }]
+        : [{ method: paymentMethod, amount: amountUsd, currency: 'USD' as const }];
+
     const invoiceData = {
       customerId: selectedCustomerId || undefined,
-      paymentMethod,
+      paymentMethod: paymentMethod === 'CREDIT' ? 'CREDIT' : paymentMethod,
+      payments,
       items: cart.map((item) => ({
         productId: item.product.id,
         quantity: item.quantity,
@@ -433,7 +403,7 @@ export default function POSPage() {
                           <h3 className="font-semibold text-sm mb-1 line-clamp-2">{product.name}</h3>
                           <div className="flex items-center justify-between mb-2">
                             <span className="text-lg font-bold text-primary">
-                              {formatCurrency(getUnitPriceInPaymentCurrency(product))}
+                              {formatCurrency(getUnitPriceDisplay(product))}
                             </span>
                             <Badge
                               variant={product.stock > 0 ? 'default' : 'destructive'}
@@ -521,19 +491,28 @@ export default function POSPage() {
                 )}
               </div>
 
-              {/* Método de pago */}
+              {/* Método de pago (Bs / $) */}
               <div className="mb-4">
                 <Label className="block mb-2">Método de pago</Label>
                 <div className="flex flex-wrap gap-2">
-                  {(['CASH', 'ZELLE', 'CARD', 'CREDIT'] as const).map((method) => (
+                  {(
+                    [
+                      { id: 'CASH_USD', label: 'Efectivo $' },
+                      { id: 'CASH_BS', label: 'Efectivo Bs' },
+                      { id: 'PAGO_MOVIL', label: 'Pago Móvil Bs' },
+                      { id: 'ZELLE', label: 'Zelle $' },
+                      { id: 'CARD', label: 'Tarjeta' },
+                      { id: 'CREDIT', label: 'Crédito' },
+                    ] as const
+                  ).map(({ id, label }) => (
                     <Button
-                      key={method}
+                      key={id}
                       type="button"
-                      variant={paymentMethod === method ? 'default' : 'outline'}
+                      variant={paymentMethod === id ? 'default' : 'outline'}
                       size="sm"
-                      onClick={() => setPaymentMethod(method)}
+                      onClick={() => setPaymentMethod(id)}
                     >
-                      {method === 'CASH' ? 'Efectivo' : method === 'ZELLE' ? 'Zelle' : method === 'CARD' ? 'Tarjeta' : 'Crédito'}
+                      {label}
                     </Button>
                   ))}
                 </div>
@@ -557,7 +536,7 @@ export default function POSPage() {
                           <div className="flex-1">
                             <h4 className="font-semibold text-sm">{item.product.name}</h4>
                             <p className="text-xs text-muted-foreground">
-                              {formatCurrency(getUnitPriceInPaymentCurrency(item.product))} c/u
+                              {formatCurrency(getUnitPriceDisplay(item.product))} c/u
                             </p>
                           </div>
                           <Button
@@ -591,7 +570,7 @@ export default function POSPage() {
                             </Button>
                           </div>
                           <span className="font-bold">
-                            {formatCurrency(round2(getUnitPriceInPaymentCurrency(item.product) * item.quantity))}
+                            {formatCurrency(round2(getUnitPriceDisplay(item.product) * item.quantity))}
                           </span>
                         </div>
                       </div>
@@ -600,20 +579,17 @@ export default function POSPage() {
                 )}
               </div>
 
-              {/* Resumen financiero: Subtotal, Impuesto (IVA/IGFT), Total */}
+              {/* Resumen: solo cobro real (sin IVA/IGTF) */}
               <div className="space-y-2 pt-4 border-t border-border">
-                <div className="flex justify-between text-sm">
-                  <span>Subtotal</span>
-                  <span>{formatCurrency(subtotal)}</span>
-                </div>
-                <div className="flex justify-between text-sm text-muted-foreground">
-                  <span>{taxLabel}</span>
-                  <span>{formatCurrency(tax)}</span>
-                </div>
-                <div className="flex justify-between font-bold text-lg pt-2 border-t border-border">
+                <div className="flex justify-between font-bold text-lg">
                   <span>Total</span>
                   <span>{formatCurrency(total)}</span>
                 </div>
+                {(paymentMethod === 'CASH_BS' || paymentMethod === 'PAGO_MOVIL') && (
+                  <p className="text-xs text-muted-foreground">
+                    Equiv. Bs: {new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2 }).format(round2(total * tasaBcv))}
+                  </p>
+                )}
               </div>
 
               {/* Botón de cobrar */}

@@ -271,15 +271,12 @@ export class DashboardService {
     const crecimientoMensual =
       totalLastMonth > 0 ? ((totalThisMonth - totalLastMonth) / totalLastMonth) * 100 : 0;
 
-    // Impuestos acumulados: estimado IGTF 3% + IVA 16% aproximado sobre ventas del mes (simplificado como 3% IGTF sobre total USD)
-    const totalImpuestosAcumulados = totalThisMonth * 0.03;
-
     return {
       salesChartLastMonth,
       topProductsByMargin,
       ticketPromedio: Math.round(ticketPromedio * 100) / 100,
       crecimientoMensual: Math.round(crecimientoMensual * 10) / 10,
-      totalImpuestosAcumulados: Math.round(totalImpuestosAcumulados * 100) / 100,
+      totalVentasMes: Math.round(totalThisMonth * 100) / 100,
     };
   }
 

@@ -32,6 +32,22 @@ export class InventoryMovementsController {
   }
 
   /**
+   * KPIs para dashboard de Autoconsumo: impacto económico por día, productos más consumidos, distribución por motivo.
+   * Query opcionales: dateFrom, dateTo (YYYY-MM-DD).
+   */
+  @Get('kpis')
+  async getKpis(
+    @ActiveOrganization() organizationId: number,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+  ) {
+    return this.inventoryMovementsService.getAutoconsumoKpis(organizationId, {
+      dateFrom,
+      dateTo,
+    });
+  }
+
+  /**
    * Lista movimientos de inventario de la organización.
    * Query opcionales: productId, type (MovementType), limit.
    */

@@ -21,21 +21,12 @@ export class OrganizationGuard implements CanActivate {
       throw new ForbiddenException('Usuario no autenticado');
     }
 
-    // Buscar el header x-tenant-id (o x-organization-id como alternativa)
-    const organizationIdHeader =
-      request.headers['x-tenant-id'] || request.headers['x-organization-id'];
+    // TenantId SOLO desde el JWT; no se confía en el ID enviado por el frontend (headers/body).
+    const organizationId = user.organizationId ?? user.tenantId;
 
-    if (!organizationIdHeader) {
+    if (organizationId == null) {
       throw new BadRequestException(
-        'Header x-tenant-id es requerido para acceder a esta organización',
-      );
-    }
-
-    // Convertir a número y validar
-    const organizationId = parseInt(organizationIdHeader, 10);
-    if (isNaN(organizationId)) {
-      throw new BadRequestException(
-        'x-tenant-id debe ser un número válido',
+        'No hay organización activa en la sesión. Use POST /auth/switch-organization o inicie sesión de nuevo.',
       );
     }
 

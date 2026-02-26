@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Image from 'next/image';
-import { ChevronLeft, Grid2x2, ShoppingCart, Box, ChevronDown, LogOut, Check, DollarSign, FileText, Users, Settings, Download, CreditCard, Car, PackageMinus, History } from 'lucide-react';
+import { ChevronLeft, Grid2x2, ShoppingCart, Box, ChevronDown, LogOut, Check, DollarSign, FileText, Users, Settings, Download, CreditCard, Car, PackageMinus, History, BarChart3, Wallet, AlertTriangle, TrendingUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/useAuthStore';
 import { apiClient } from '@/lib/api';
 import { usePermission } from '@/hooks/usePermission';
+import { canShowNavItem } from '@/hooks/useNavByRole';
 import { usePWAInstall } from '@/hooks/usePWAInstall';
 import { useExchangeRate } from '@/hooks/useExchangeRate';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -27,11 +28,15 @@ const navigationItems = [
   { id: 'pos', label: 'POS', icon: ShoppingCart, href: '/pos', permission: 'canManageCustomers' },
   { id: 'products', label: 'Inventario', icon: Box, href: '/products', permission: 'canManageProducts' },
   { id: 'movements', label: 'Movimientos inventario', icon: PackageMinus, href: '/inventory/movements', permission: 'canManageInventory' },
+  { id: 'autoconsumo', label: 'Autoconsumo', icon: BarChart3, href: '/autoconsumo', permission: 'canManageInventory' },
   { id: 'customers', label: 'Clientes', icon: Users, href: '/customers', permission: 'canManageCustomers' },
   { id: 'invoices', label: 'Facturas', icon: FileText, href: '/invoices', permission: 'canManageCustomers' },
   { id: 'history', label: 'Historial de Ventas', icon: History, href: '/history', permission: 'canManageCustomers' },
+  { id: 'cierre-caja', label: 'Cierre de caja', icon: Wallet, href: '/cierre-caja', permission: 'canManageCustomers' },
   { id: 'credits', label: 'Cuentas por Cobrar', icon: CreditCard, href: '/credits', permission: 'canManageCustomers' },
   { id: 'expenses', label: 'Gastos', icon: DollarSign, href: '/expenses', permission: 'canManageExpenses' },
+  { id: 'alertas-stock', label: 'Alertas inventario', icon: AlertTriangle, href: '/alertas-stock', permission: 'canManageInventory' },
+  { id: 'tasas', label: 'Tasas BCV / Diferencial', icon: TrendingUp, href: '/tasas', permission: 'canManageExpenses' },
   { id: 'inspections', label: 'Inspección vehículo', icon: Car, href: '/inspections', permission: 'canManageInventory' },
   { id: 'settings', label: 'Configuración', icon: Settings, href: '/settings', permission: 'canManageTeam' },
 ];
@@ -47,6 +52,7 @@ export default function Sidebar() {
     selectedOrganizationId,
     selectCompany,
     selectOrganization,
+    setToken,
     setSuperAdminOrganizations,
     getCurrentOrganization,
     getOrganizations,
@@ -90,6 +96,7 @@ export default function Sidebar() {
     if (pathname.startsWith('/pos')) return 'pos';
     if (pathname.startsWith('/products')) return 'products';
     if (pathname.startsWith('/inventory/movements')) return 'movements';
+    if (pathname.startsWith('/autoconsumo')) return 'autoconsumo';
     if (pathname.startsWith('/inventory')) return 'products';
     if (pathname.startsWith('/customers')) return 'customers';
     if (pathname.startsWith('/invoices')) return 'invoices';
@@ -112,10 +119,23 @@ export default function Sidebar() {
     router.push('/login');
   };
 
-  // Cambio de organización: persistir en store/localStorage y recarga total para que todo (dashboard, facturas, etc.) sea de la nueva org
-  const handleOrganizationChange = (organizationId: number) => {
+  // Cambio de organización: obtener nuevo JWT con el tenantId (backend no confía en el frontend) y recargar
+  const handleOrganizationChange = async (organizationId: number) => {
     if (user?.isSuperAdmin || (user?.organizations && user.organizations.length > 0)) {
-      selectOrganization(organizationId);
+      try {
+        const { data } = await apiClient.post<{ access_token: string; organizationId: number }>(
+          '/auth/switch-organization',
+          { organizationId }
+        );
+        if (data?.access_token) {
+          setToken(data.access_token);
+          selectOrganization(data.organizationId ?? organizationId);
+        } else {
+          selectOrganization(organizationId);
+        }
+      } catch {
+        selectOrganization(organizationId);
+      }
     } else {
       selectCompany(organizationId);
     }
@@ -157,12 +177,10 @@ export default function Sidebar() {
   // ID seleccionado (priorizar organizationId)
   const selectedId = selectedOrganizationId || selectedCompanyId;
 
-  // Inspección vehículo: empresa Davean y roles ADMIN u OPERATOR; Super Admin siempre puede verlo
+  // Inspección vehículo: exclusivo para organización Davean o rol SUPER_ADMIN
   const currentOrgName = (getCurrentOrganization() as { name?: string } | null)?.name ?? '';
-  const role = String(permissions.role ?? '').toUpperCase();
   const canSeeInspections =
-    !!user?.isSuperAdmin ||
-    (currentOrgName === 'Davean' && (role === 'ADMIN' || role === 'OPERATOR'));
+    !!user?.isSuperAdmin || currentOrgName === 'Davean';
 
   return (
     <aside
@@ -356,24 +374,9 @@ export default function Sidebar() {
       {/* Navigation - Scrollable */}
       <nav className="flex-1 p-4 space-y-2 overflow-y-auto overflow-x-hidden min-h-0">
         {navigationItems
-          .filter((item) => {
-            // Inspección vehículo: solo Davean y roles ADMIN u OPERATOR
-            if (item.id === 'inspections') {
-              return canSeeInspections;
-            }
-            if (item.permission) {
-              const permissionKey = item.permission as keyof typeof permissions;
-              const permissionValue = permissions[permissionKey];
-              const hasPermission = permissionValue === true;
-              // ADMIN y SUPER_ADMIN deben ver Configuración (Invitar Miembro, Tasa BCV)
-              const roleFilter = String(permissions.role || '').toUpperCase();
-              if (item.id === 'settings') {
-                return hasPermission || roleFilter === 'ADMIN' || roleFilter === 'SUPER_ADMIN';
-              }
-              return hasPermission;
-            }
-            return true;
-          })
+          .filter((item) =>
+            canShowNavItem(item, permissions, { canSeeInspections }),
+          )
           .map((item) => (
             <Button
               key={item.id}
