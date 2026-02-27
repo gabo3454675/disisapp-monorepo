@@ -216,7 +216,7 @@ export class ProductsService {
     const products = await this.prisma.product.findMany({
       where: {
         organizationId,
-        isActive: true,
+        // isActive: true, // Descomentar cuando se implemente el campo isActive
       },
       select: {
         id: true,
