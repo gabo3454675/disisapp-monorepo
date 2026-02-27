@@ -53,4 +53,4 @@ Thumbs.db
 
 # TypeScript
 *.tsbuildinfo
-.env.txt
+*.env.txt
