@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
-import apiClient from '@/lib/api';
+import { authService } from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
 import { Mail, Lock, Loader2, Sparkles, ArrowRight } from 'lucide-react';
 
@@ -32,18 +32,9 @@ function LoginForm() {
     setLoading(true);
 
     try {
-      const response = await apiClient.post('/auth/login', {
-        email,
-        password,
-      });
-
-      const { access_token, user } = response.data;
-
-      // Guardar autenticación en el store
-      setAuth(user, access_token);
-
-      // Si el usuario tiene empresas, redirigir al dashboard
-      if (user.companies && user.companies.length > 0) {
+      const { access_token, user } = await authService.login({ email, password });
+      setAuth(user as unknown as Parameters<typeof setAuth>[0], access_token);
+      if ((user as { companies?: unknown[] }).companies?.length) {
         router.push('/');
       } else {
         // Si no tiene empresas, podría redirigir a una página de bienvenida

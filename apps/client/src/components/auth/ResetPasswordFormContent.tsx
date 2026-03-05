@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
-import apiClient from '@/lib/api';
+import { authService } from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
 import { Mail, Lock, Loader2, KeyRound, ArrowRight } from 'lucide-react';
 import type { AxiosError } from 'axios';
@@ -64,19 +64,17 @@ export function ResetPasswordFormContent({
     setLoading(true);
 
     try {
-      const response = await apiClient.post('/auth/complete-password-reset', {
+      const { access_token, user } = await authService.completePasswordReset({
         email: emailTrimmed,
         currentPassword,
         newPassword,
       });
 
-      const { access_token, user } = response.data;
-
       if (fromProfile) {
         clearAuth();
         router.push('/login?success=password_changed');
       } else {
-        setAuth(user, access_token);
+        setAuth(user as unknown as Parameters<typeof setAuth>[0], access_token);
         router.push('/');
       }
     } catch (err) {

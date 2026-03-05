@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/table';
 import { AssignTaskModal } from '@/components/assign-task-modal';
 import { TaskResolutionBar } from '@/components/task-resolution-bar';
-import apiClient from '@/lib/api';
+import apiClient, { invoiceService } from '@/lib/api';
 import { Loader2, UserPlus, Download, MessageCircle, CheckCircle } from 'lucide-react';
 
 interface InvoiceItem {
@@ -142,7 +142,7 @@ export function InvoiceDetailSheet({
   const handleDownloadPDF = async () => {
     if (!invoiceId) return;
     try {
-      const response = await apiClient.get(`/invoices/${invoiceId}/pdf`, { responseType: 'blob' });
+      const response = await invoiceService.getPdf(invoiceId);
       const contentType = response.headers?.['content-type'] ?? '';
       if (contentType.includes('application/json')) {
         const text = await (response.data as Blob).text();

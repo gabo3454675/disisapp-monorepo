@@ -16,9 +16,9 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/useAuthStore';
-import { apiClient } from '@/lib/api';
+import { apiClient, authService } from '@/lib/api';
 import { usePermission } from '@/hooks/usePermission';
-import { canShowNavItem } from '@/hooks/useNavByRole';
+import { canShowNavItem, type NavItem } from '@/hooks/useNavByRole';
 import { usePWAInstall } from '@/hooks/usePWAInstall';
 import { useExchangeRate } from '@/hooks/useExchangeRate';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -123,10 +123,7 @@ export default function Sidebar() {
   const handleOrganizationChange = async (organizationId: number) => {
     if (user?.isSuperAdmin || (user?.organizations && user.organizations.length > 0)) {
       try {
-        const { data } = await apiClient.post<{ access_token: string; organizationId: number }>(
-          '/auth/switch-organization',
-          { organizationId }
-        );
+        const data = await authService.switchOrganization(organizationId);
         if (data?.access_token) {
           setToken(data.access_token);
           selectOrganization(data.organizationId ?? organizationId);
@@ -375,7 +372,7 @@ export default function Sidebar() {
       <nav className="flex-1 p-4 space-y-2 overflow-y-auto overflow-x-hidden min-h-0">
         {navigationItems
           .filter((item) =>
-            canShowNavItem(item, permissions, { canSeeInspections }),
+            canShowNavItem(item as NavItem, permissions, { canSeeInspections }),
           )
           .map((item) => (
             <Button

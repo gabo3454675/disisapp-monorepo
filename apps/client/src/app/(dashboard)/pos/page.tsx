@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ShoppingCart, Plus, Minus, Trash2, Search, Package, CheckCircle2, Loader2, Printer } from 'lucide-react';
-import apiClient from '@/lib/api';
+import apiClient, { invoiceService } from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePermission } from '@/hooks/usePermission';
 import { Badge } from '@/components/ui/badge';
@@ -243,11 +243,11 @@ export default function POSPage() {
         });
         setTimeout(() => setSuccess(false), 8000);
       } else {
-        const response = await apiClient.post('/invoices', invoiceData);
+        const created = await invoiceService.create(invoiceData);
         setCart([]);
         setSelectedCustomerId(null);
         setSuccess(true);
-        setLastInvoiceId(response.data.id);
+        setLastInvoiceId(created.id);
         await fetchProducts();
         setTimeout(() => {
           setSuccess(false);
@@ -326,9 +326,7 @@ export default function POSPage() {
                 size="sm"
                 onClick={async () => {
                   try {
-                    const response = await apiClient.get(`/invoices/${lastInvoiceId}/pdf`, {
-                      responseType: 'blob',
-                    });
+                    const response = await invoiceService.getPdf(lastInvoiceId);
                     const contentType = response.headers?.['content-type'] ?? '';
                     if (contentType.includes('application/json')) {
                       const text = await (response.data as Blob).text();

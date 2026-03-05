@@ -211,6 +211,7 @@ model Product {
   imageUrl          String?
   minStock          Int      @default(5) // Alerta de stock bajo
   isExempt          Boolean  @default(false) // Exento de impuesto (columna EXENTO en plantilla: SI/NO)
+  isActive          Boolean  @default(true)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 

@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { TaskResolutionBar } from '@/components/task-resolution-bar';
-import apiClient from '@/lib/api';
+import apiClient, { invoiceService } from '@/lib/api';
 import { FileText, CheckCircle, Loader2, PlayCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -85,9 +85,7 @@ export function TaskResolutionModal({
   const handleDownloadPDF = async () => {
     if (!task?.invoiceId) return;
     try {
-      const response = await apiClient.get(`/invoices/${task.invoiceId}/pdf`, {
-        responseType: 'blob',
-      });
+      const response = await invoiceService.getPdf(task.invoiceId);
       const contentType = response.headers?.['content-type'] ?? '';
       if (contentType.includes('application/json')) {
         const text = await (response.data as Blob).text();

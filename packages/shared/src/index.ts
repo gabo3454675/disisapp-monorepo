@@ -1,11 +1,21 @@
-// User Types
+/**
+ * Tipos compartidos alineados con el schema de Prisma (server).
+ * IDs numéricos y organizationId como referencia multi-tenant.
+ */
+
+// ------------------------------------------
+// User (Prisma: User)
+// ------------------------------------------
 export interface User {
-  id: string;
+  id: number;
   email: string;
-  name?: string;
-  tenantId: string;
+  fullName?: string | null;
+  name?: string; // alias para compatibilidad
+  organizationId?: number; // JWT / sesión activa (tenant)
   role: UserRole;
   isActive: boolean;
+  isSuperAdmin?: boolean;
+  requiresPasswordChange?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -13,88 +23,122 @@ export interface User {
 export enum UserRole {
   SUPER_ADMIN = 'SUPER_ADMIN',
   ADMIN = 'ADMIN',
-  USER = 'USER',
+  MANAGER = 'MANAGER',
+  SELLER = 'SELLER',
+  WAREHOUSE = 'WAREHOUSE',
+  USER = 'USER', // alias si se usa en UI
 }
 
-// Tenant Types
+// ------------------------------------------
+// Organization / Tenant (Prisma: Organization)
+// ------------------------------------------
 export interface Tenant {
-  id: string;
+  id: number;
   name: string;
   slug: string;
   subdomain?: string;
-  isActive: boolean;
-  createdAt: Date;
-  updatedAt: Date;
+  isActive?: boolean;
+  plan?: string;
+  currencyCode?: string;
+  currencySymbol?: string;
+  exchangeRate?: number;
+  rateUpdatedAt?: Date | string | null;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
-// Invoice Types
-export interface Invoice {
-  id: string;
-  invoiceNumber: string;
-  issueDate: Date;
-  dueDate?: Date;
-  status: InvoiceStatus;
-  subtotal: number;
-  tax: number;
-  total: number;
-  notes?: string;
-  tenantId: string;
-  customerId?: string;
-  userId?: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
+// ------------------------------------------
+// Invoice (Prisma: Invoice, InvoiceStatus)
+// ------------------------------------------
 export enum InvoiceStatus {
-  DRAFT = 'DRAFT',
-  SENT = 'SENT',
+  PENDING = 'PENDING',
   PAID = 'PAID',
-  OVERDUE = 'OVERDUE',
   CANCELLED = 'CANCELLED',
 }
 
-// Customer Types
+export interface Invoice {
+  id: number;
+  companyId?: number; // legacy
+  organizationId?: number | null;
+  customerId?: number | null;
+  sellerId?: number;
+  totalAmount: number | string;
+  status: InvoiceStatus;
+  paymentMethod?: string;
+  paymentStatus?: string;
+  notes?: string | null;
+  pdfUrl?: string | null;
+  publicToken?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  // Campos opcionales de respuesta API
+  invoiceNumber?: string;
+  issueDate?: Date;
+  dueDate?: Date;
+  subtotal?: number;
+  tax?: number;
+  total?: number;
+}
+
+// ------------------------------------------
+// Customer (Prisma: Customer)
+// ------------------------------------------
 export interface Customer {
-  id: string;
+  id: number;
+  companyId?: number;
+  organizationId?: number | null;
   name: string;
-  email?: string;
-  phone?: string;
-  address?: string;
-  taxId?: string;
-  isActive: boolean;
-  tenantId: string;
+  email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  taxId?: string | null;
+  isActive?: boolean;
   createdAt: Date;
-  updatedAt: Date;
+  updatedAt?: Date;
 }
 
-// Product Types
+// ------------------------------------------
+// Product (Prisma: Product)
+// ------------------------------------------
 export interface Product {
-  id: string;
+  id: number;
+  companyId?: number;
+  organizationId?: number | null;
   name: string;
-  description?: string;
-  sku?: string;
-  price: number;
+  description?: string | null;
+  sku?: string | null;
+  barcode?: string | null;
+  costPrice?: number | string;
+  salePrice: number | string;
+  price?: number; // alias para salePrice
+  salePriceCurrency?: string;
   stock: number;
+  imageUrl?: string | null;
+  minStock?: number;
+  isExempt?: boolean;
   isActive: boolean;
-  tenantId: string;
   createdAt: Date;
   updatedAt: Date;
 }
 
-// Invoice Item Types
+// ------------------------------------------
+// InvoiceItem (Prisma: InvoiceItem)
+// ------------------------------------------
 export interface InvoiceItem {
-  id: string;
+  id: number;
+  invoiceId: number;
+  productId: number;
   quantity: number;
-  unitPrice: number;
-  subtotal: number;
+  unitPrice: number | string;
+  subtotal: number | string;
   description?: string;
-  invoiceId: string;
-  productId?: string;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
+// ------------------------------------------
 // API Response Types
+// ------------------------------------------
 export interface ApiResponse<T> {
   data: T;
   message?: string;
@@ -109,7 +153,9 @@ export interface PaginatedResponse<T> {
   totalPages: number;
 }
 
-// Auth Types
+// ------------------------------------------
+// Auth Types (LoginResponse: user.id number, JWT con organizationId)
+// ------------------------------------------
 export interface LoginRequest {
   email: string;
   password: string;
@@ -118,10 +164,14 @@ export interface LoginRequest {
 export interface LoginResponse {
   access_token: string;
   user: {
-    id: string;
+    id: number;
     email: string;
-    tenantId: string;
+    fullName?: string | null;
     name?: string;
+    organizationId?: number;
+    isSuperAdmin?: boolean;
+    organizations?: Array<{ id: number; name: string; slug: string; plan?: string; role?: string; currencyCode?: string; currencySymbol?: string; exchangeRate?: number; rateUpdatedAt?: string | null }>;
+    companies?: Array<{ id: number; name: string; taxId?: string; logoUrl?: string | null; currency: string; role: string }>;
   };
 }
 

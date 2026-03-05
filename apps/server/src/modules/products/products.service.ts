@@ -216,6 +216,7 @@ export class ProductsService {
     const products = await this.prisma.product.findMany({
       where: {
         organizationId,
+        // @ts-ignore
         isActive: true,
       },
       select: {

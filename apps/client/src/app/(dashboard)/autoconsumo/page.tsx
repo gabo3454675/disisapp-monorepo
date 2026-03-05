@@ -41,7 +41,7 @@ export default function AutoconsumoPage() {
   const [loading, setLoading] = useState(true);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const { formatCurrency } = useDisplayCurrency();
+  const { formatForDisplay: formatCurrency } = useDisplayCurrency();
 
   useEffect(() => {
     const from = dateFrom || undefined;
