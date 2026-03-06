@@ -1,1 +1,27 @@
-Copyright (c) 2026 Gabriel Longa. All rights reserved.
+# disis - Sistema de Facturación e Inventario Multi-tenant 📦
+
+**disis** es una solución integral diseñada para la gestión empresarial a escala. Este sistema permite el manejo de múltiples organizaciones (multi-tenancy) de forma aislada y segura, optimizando los procesos de facturación e inventario en tiempo real.
+
+## 🚀 Stack Tecnológico
+- **Frontend:** React (Vite) + TypeScript
+- **Backend:** Node.js + Prisma ORM
+- **Base de Datos:** PostgreSQL
+- **Despliegue:** Render
+
+## ✨ Características Técnicas
+- **Arquitectura Multi-tenant:** Aislamiento de datos por organización para máxima seguridad.
+- **Gestión de Inventario:** Control de stock automatizado y reportes de movimientos.
+- **Facturación Escalable:** Módulo diseñado para alta disponibilidad y consistencia de datos.
+- **UI/UX Moderna:** Interfaz desarrollada con componentes optimizados para productividad.
+
+---
+
+## 🔒 PROTECCIÓN DE PROPIEDAD INTELECTUAL
+**Copyright (c) 2026 Gabriel Longa. Todos los derechos reservados.**
+
+Este software, identificado como **disis**, es propiedad intelectual de **Gabriel Longa**. Queda terminantemente prohibida la copia parcial o total del código, lógica de negocio, esquemas de base de datos o arquitectura del sistema sin autorización previa y por escrito del autor. 
+
+**Estatus Legal:** El sistema cuenta con registro de patente y protección de autoría vigente. El uso no autorizado será sujeto a las acciones legales correspondientes.
+
+---
+*Desarrollado por [Gabriel Longa](https://github.com/gabo3454675) | Estudiante de Ingeniería de Sistemas @ UNIMET 🇻🇪*
