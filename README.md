@@ -118,4 +118,4 @@ El sistema está preparado para manejar multi-tenancy mediante:
 
 ## 📄 Licencia
 
-UNLICENSED
+Copyright (c) 2026 Gabriel Longa. Todos los derechos reservados.
