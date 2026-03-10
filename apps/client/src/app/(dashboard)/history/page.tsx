@@ -282,7 +282,7 @@ export default function HistoryPage() {
             ) : (
               <>
                 <div className="md:hidden space-y-3">
-                  {data.invoices.map((invoice) => (
+                  {data.invoices.map((invoice: HistoryInvoice) => (
                     <Card key={invoice.id} className="p-4">
                       <div className="flex justify-between items-start gap-2 mb-2">
                         <div>
@@ -338,7 +338,7 @@ export default function HistoryPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {data.invoices.map((invoice) => (
+                      {data.invoices.map((invoice: HistoryInvoice) => (
                         <TableRow key={invoice.id}>
                           <TableCell className="text-muted-foreground">{formatDate(typeof invoice.createdAt === 'string' ? invoice.createdAt : new Date(invoice.createdAt).toISOString())}</TableCell>
                           <TableCell>{invoice.customer?.name || 'Cliente General'}</TableCell>
