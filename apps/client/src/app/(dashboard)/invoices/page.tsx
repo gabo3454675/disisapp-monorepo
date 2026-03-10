@@ -82,20 +82,6 @@ export default function InvoicesPage() {
     fetchInvoices();
   }, [fetchInvoices]);
 
-  if (!canManageCustomers) {
-    return (
-      <div className="p-4 md:p-8 max-w-7xl mx-auto">
-        <Card>
-          <CardContent className="py-12 text-center">
-            <p className="text-muted-foreground">
-              No tienes permisos para acceder a esta sección.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   const handleDeleteInvoice = async (invoiceId: number) => {
     if (!confirm('¿Eliminar esta factura? Esta acción no se puede deshacer.')) return;
     try {
@@ -154,6 +140,20 @@ export default function InvoicesPage() {
         invoice.totalAmount.toString().includes(query),
     );
   }, [invoices, debouncedSearchQuery]);
+
+  if (!canManageCustomers) {
+    return (
+      <div className="p-4 md:p-8 max-w-7xl mx-auto">
+        <Card>
+          <CardContent className="py-12 text-center">
+            <p className="text-muted-foreground">
+              No tienes permisos para acceder a esta sección.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto">
