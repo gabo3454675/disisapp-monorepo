@@ -3,7 +3,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { toast } from 'sonner';
 import { db, type PendingInvoiceRecord } from '@/lib/db';
-import apiClient from '@/lib/api';
+import { invoiceService } from '@/lib/api';
 
 /**
  * Hook que escucha el evento 'online', envía las facturas pendientes
@@ -30,7 +30,7 @@ export function useSync() {
 
     for (const record of toSync) {
       try {
-        await apiClient.post('/invoices', record.payload);
+        await invoiceService.create(record.payload);
         await db.pendingInvoices.delete(record.id!);
         successCount++;
       } catch {

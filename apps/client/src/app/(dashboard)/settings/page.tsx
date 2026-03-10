@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Loader2, Trash2, Users, AlertTriangle, Package } from 'lucide-react';
-import apiClient from '@/lib/api';
+import apiClient, { invoiceService } from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
 
 export default function SettingsPage() {
@@ -34,8 +34,8 @@ export default function SettingsPage() {
     }
     setClearing(true);
     try {
-      const res = await apiClient.post<{ message: string; deleted?: number }>('/invoices/clear-test-data');
-      alert(res.data.deleted != null ? `${res.data.message} (${res.data.deleted} facturas)` : res.data.message);
+      const res = await invoiceService.clearTestData();
+      alert(res.deleted != null ? `${res.message} (${res.deleted} facturas)` : res.message);
     } catch (error: any) {
       alert(error.response?.data?.message ?? 'Error al borrar el historial');
     } finally {

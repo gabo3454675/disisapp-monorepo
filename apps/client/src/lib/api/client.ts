@@ -1,16 +1,15 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
-
-const DEFAULT_API_URL = 'http://localhost:3001/api';
+import { API_BASE_URL } from '@/lib/config/api-config';
 
 function getApiUrl(): string {
   if (typeof window !== 'undefined' && (window as unknown as { __NEXT_PUBLIC_API_URL__?: string }).__NEXT_PUBLIC_API_URL__) {
     return (window as unknown as { __NEXT_PUBLIC_API_URL__: string }).__NEXT_PUBLIC_API_URL__;
   }
-  return process.env.NEXT_PUBLIC_API_URL || DEFAULT_API_URL;
+  return API_BASE_URL;
 }
 
 export const apiClient = axios.create({
-  baseURL: DEFAULT_API_URL,
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -23,29 +22,20 @@ apiClient.interceptors.request.use(
     config.baseURL = getApiUrl();
     // Solo en el cliente (browser)
     if (typeof window !== 'undefined') {
-      // Obtener token del localStorage
       const token = localStorage.getItem('auth_token');
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
-
-      // Obtener selectedOrganizationId directamente del store de Zustand
-      // Esto es más confiable que parsear localStorage manualmente
       try {
-        // Importación dinámica para evitar problemas de SSR
         const { useAuthStore } = require('@/store/useAuthStore');
         const store = useAuthStore.getState();
-        // Priorizar selectedOrganizationId sobre selectedCompanyId
         const selectedOrganizationId = store.selectedOrganizationId || store.selectedCompanyId;
-
-        // No enviar tenant en rutas públicas ni en el listado de todas las orgs (Super Admin)
         const isPublicRoute = config.url?.includes('/auth/');
         const isOrganizationsAll = config.url?.includes('/tenants/organizations-all');
         if (selectedOrganizationId && !isPublicRoute && !isOrganizationsAll) {
           config.headers['x-tenant-id'] = selectedOrganizationId.toString();
         }
       } catch (error) {
-        // Si hay error accediendo al store, intentar leer de localStorage como fallback
         try {
           const authStorage = localStorage.getItem('auth-storage');
           if (authStorage) {
@@ -59,50 +49,38 @@ apiClient.interceptors.request.use(
             }
           }
         } catch (fallbackError) {
-          // Error silencioso - no afecta la funcionalidad
+          // no-op
         }
       }
     }
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
-// Response interceptor: Maneja errores de autenticación y validación de tenant
 apiClient.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
     if (typeof window !== 'undefined') {
-      // Error 401: Token expirado o inválido
       if (error.response?.status === 401) {
         localStorage.removeItem('auth_token');
         localStorage.removeItem('auth-storage');
-        // Redirigir a login
         window.location.href = '/login';
         return Promise.reject(error);
       }
-
-      // Error 400 con mensaje de x-tenant-id: No hay organización seleccionada
       if (
         error.response?.status === 400 &&
         (error.response?.data as any)?.message?.includes('x-tenant-id')
       ) {
-        // No redirigir automáticamente, dejar que el componente maneje el error
         console.warn('No hay organización seleccionada');
       }
-
-      // Error 403 RESET_REQUIRED: Usuario con clave temporal debe cambiarla
       if (error.response?.status === 403) {
         const data = error.response?.data as { message?: string; email?: string } | undefined;
         const message = typeof data?.message === 'string' ? data.message : '';
         if (message === 'RESET_REQUIRED') {
           let userEmail = '';
           try {
-            // Prioridad 1: email en la respuesta del backend
             if (data?.email) userEmail = data.email;
-            // Prioridad 2: email del body de la request (login)
             if (!userEmail && typeof error.config?.data === 'string') {
               const parsed = JSON.parse(error.config.data) as { email?: string };
               if (parsed?.email) userEmail = parsed.email;

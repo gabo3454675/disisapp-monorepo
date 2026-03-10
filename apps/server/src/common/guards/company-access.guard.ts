@@ -24,7 +24,7 @@ export class CompanyAccessGuard implements CanActivate {
 
     if (organizationId == null) {
       throw new ForbiddenException(
-        'Se requiere organización activa (x-tenant-id). Use OrganizationGuard antes de CompanyAccessGuard.',
+        'Se requiere organización activa en el token. Use OrganizationGuard antes de CompanyAccessGuard.',
       );
     }
 

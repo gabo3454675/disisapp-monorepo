@@ -27,50 +27,12 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { InvoiceDetailSheet } from '@/components/invoice-detail-sheet';
-import { Loader2, MoreVertical, FileText, Printer, Calendar, Building2, DollarSign, Receipt, Percent } from 'lucide-react';
-import apiClient from '@/lib/api';
+import { Loader2, MoreVertical, FileText, Printer, Calendar, Building2, DollarSign, Receipt } from 'lucide-react';
+import { apiClient, invoiceService } from '@/lib/api';
+import type { HistoryResponse, HistoryInvoice } from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePermission } from '@/hooks/usePermission';
 import { useDisplayCurrency } from '@/hooks/useDisplayCurrency';
-
-interface InvoiceItem {
-  id: number;
-  quantity: number;
-  unitPrice: number;
-  subtotal: number;
-  product: { id: number; name: string };
-}
-
-interface Customer {
-  id: number;
-  name: string;
-  taxId?: string | null;
-}
-
-interface HistoryInvoice {
-  id: number;
-  totalAmount: number;
-  status: string;
-  paymentMethod: string;
-  createdAt: string;
-  customer: Customer | null;
-  items: InvoiceItem[];
-}
-
-interface DailySummaryItem {
-  date: string;
-  totalSales: number;
-  totalIgft: number;
-  byPaymentMethod: Record<string, number>;
-}
-
-interface HistoryResponse {
-  organizationId: number;
-  startDate: string;
-  endDate: string;
-  dailySummary: DailySummaryItem[];
-  invoices: HistoryInvoice[];
-}
 
 function getDefaultDateRange(): { start: string; end: string } {
   const end = new Date();
@@ -104,16 +66,13 @@ export default function HistoryPage() {
     if (!activeOrgId) return;
     try {
       setLoading(true);
-      const params: Record<string, string> = {
+      const params = {
         startDate: startDate + 'T00:00:00.000Z',
         endDate: endDate + 'T23:59:59.999Z',
+        ...(filterOrgId != null && filterOrgId !== activeOrgId && isSuperAdmin && { organizationId: filterOrgId }),
       };
-      // Superadmin puede consultar otra org sin cambiar el tenant; otros usuarios el filtro = tenant actual
-      if (filterOrgId != null && filterOrgId !== activeOrgId && isSuperAdmin) {
-        params.organizationId = String(filterOrgId);
-      }
-      const response = await apiClient.get<HistoryResponse>('/invoices/history', { params });
-      setData(response.data);
+      const data = await invoiceService.getHistory(params);
+      setData(data);
     } catch (error) {
       console.error('Error fetching history:', error);
       setData(null);
@@ -132,9 +91,7 @@ export default function HistoryPage() {
 
   const handleDownloadPDF = async (invoiceId: number) => {
     try {
-      const response = await apiClient.get(`/invoices/${invoiceId}/pdf`, {
-        responseType: 'blob',
-      });
+      const response = await invoiceService.getPdf(invoiceId);
       const contentType = response.headers?.['content-type'] ?? '';
       if (contentType.includes('application/json')) {
         const text = await (response.data as Blob).text();
@@ -169,19 +126,32 @@ export default function HistoryPage() {
     }).format(new Date(dateString));
   };
 
-  const formatPaymentMethod = (method: string) => {
-    const m = (method || 'CASH').toUpperCase();
-    const map: Record<string, string> = {
-      CASH: 'Efectivo',
-      ZELLE: 'Zelle',
-      CARD: 'Tarjeta',
-      CREDIT: 'Crédito',
-    };
-    return map[m] ?? method;
+  const paymentMethodLabels: Record<string, string> = {
+    CASH: 'Efectivo $',
+    CASH_USD: 'Efectivo $',
+    CASH_BS: 'Efectivo Bs',
+    PAGO_MOVIL: 'Pago Móvil Bs',
+    ZELLE: 'Zelle $',
+    CARD: 'Tarjeta',
+    CREDIT: 'Crédito',
+    MIXED: 'Mixto',
+  };
+
+  const getPaymentMethodDisplay = (inv: HistoryInvoice): string => {
+    if (inv.paymentLines && inv.paymentLines.length > 0) {
+      return inv.paymentLines
+        .map((p: { method: string; amount: number; currency: string }) => {
+          const label = paymentMethodLabels[p.method] ?? p.method;
+          const sym = p.currency === 'VES' ? 'Bs' : '$';
+          return `${label} ${Number(p.amount).toFixed(2)} ${sym}`;
+        })
+        .join(' + ');
+    }
+    const m = (inv.paymentMethod || 'CASH').toUpperCase();
+    return paymentMethodLabels[m] ?? inv.paymentMethod ?? '—';
   };
 
   const totalSalesPeriod = data?.invoices?.reduce((sum, inv) => sum + Number(inv.totalAmount), 0) ?? 0;
-  const totalIgftPeriod = data?.dailySummary?.reduce((sum, d) => sum + d.totalIgft, 0) ?? 0;
   const invoicesCount = data?.invoices?.length ?? 0;
 
   if (!canManageCustomers) {
@@ -269,8 +239,8 @@ export default function HistoryPage() {
           </CardContent>
         </Card>
 
-        {/* Tarjetas de resumen del periodo */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* Tarjetas de resumen del periodo (solo cobro real, sin IVA/IGTF) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
@@ -280,17 +250,6 @@ export default function HistoryPage() {
             </CardHeader>
             <CardContent>
               <p className="text-2xl font-bold">{formatForDisplay(totalSalesPeriod)}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                <Percent className="h-4 w-4" />
-                IGTF del Periodo
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{formatForDisplay(totalIgftPeriod)}</p>
             </CardContent>
           </Card>
           <Card>
@@ -329,23 +288,23 @@ export default function HistoryPage() {
                         <div>
                           <p className="font-semibold">#{invoice.id}</p>
                           <p className="text-sm text-muted-foreground">
-                            {invoice.customer?.name || 'Cliente General'} · {formatDate(invoice.createdAt)}
+                            {invoice.customer?.name || 'Cliente General'} · {formatDate(typeof invoice.createdAt === 'string' ? invoice.createdAt : new Date(invoice.createdAt).toISOString())}
                           </p>
                         </div>
                         <span
                           className={`shrink-0 inline-flex px-2 py-1 rounded-full text-xs font-medium ${
-                            invoice.status === 'PAID'
+                            (String(invoice.status) === 'PAID')
                               ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
-                              : invoice.status === 'PENDING'
+                              : String(invoice.status) === 'PENDING'
                                 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400'
                                 : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
                           }`}
                         >
-                          {invoice.status === 'PAID' ? 'Pagada' : invoice.status === 'PENDING' ? 'Pendiente' : 'Cancelada'}
+                          {String(invoice.status) === 'PAID' ? 'Pagada' : String(invoice.status) === 'PENDING' ? 'Pendiente' : 'Cancelada'}
                         </span>
                       </div>
                       <p className="font-bold text-primary mb-2">{formatForDisplay(Number(invoice.totalAmount))}</p>
-                      <p className="text-xs text-muted-foreground mb-2">{formatPaymentMethod(invoice.paymentMethod)}</p>
+                      <p className="text-xs text-muted-foreground mb-2">{getPaymentMethodDisplay(invoice)}</p>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="outline" size="sm">
@@ -353,11 +312,11 @@ export default function HistoryPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => { setDetailInvoiceId(invoice.id); setDetailSheetOpen(true); }}>
+                          <DropdownMenuItem onClick={() => { setDetailInvoiceId(Number(invoice.id)); setDetailSheetOpen(true); }}>
                             <FileText className="mr-2 h-4 w-4" />
                             Revisar
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleDownloadPDF(invoice.id)}>
+                          <DropdownMenuItem onClick={() => handleDownloadPDF(Number(invoice.id))}>
                             <Printer className="mr-2 h-4 w-4" />
                             Imprimir
                           </DropdownMenuItem>
@@ -381,23 +340,23 @@ export default function HistoryPage() {
                     <TableBody>
                       {data.invoices.map((invoice) => (
                         <TableRow key={invoice.id}>
-                          <TableCell className="text-muted-foreground">{formatDate(invoice.createdAt)}</TableCell>
+                          <TableCell className="text-muted-foreground">{formatDate(typeof invoice.createdAt === 'string' ? invoice.createdAt : new Date(invoice.createdAt).toISOString())}</TableCell>
                           <TableCell>{invoice.customer?.name || 'Cliente General'}</TableCell>
                           <TableCell className="font-semibold">
                             {formatForDisplay(Number(invoice.totalAmount))}
                           </TableCell>
-                          <TableCell>{formatPaymentMethod(invoice.paymentMethod)}</TableCell>
+                          <TableCell>{getPaymentMethodDisplay(invoice)}</TableCell>
                           <TableCell>
                             <span
                               className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
-                                invoice.status === 'PAID'
+                                String(invoice.status) === 'PAID'
                                   ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
-                                  : invoice.status === 'PENDING'
+                                  : String(invoice.status) === 'PENDING'
                                     ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400'
                                     : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
                               }`}
                             >
-                              {invoice.status === 'PAID' ? 'Pagada' : invoice.status === 'PENDING' ? 'Pendiente' : 'Cancelada'}
+                              {String(invoice.status) === 'PAID' ? 'Pagada' : String(invoice.status) === 'PENDING' ? 'Pendiente' : 'Cancelada'}
                             </span>
                           </TableCell>
                           <TableCell>
@@ -408,11 +367,11 @@ export default function HistoryPage() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => { setDetailInvoiceId(invoice.id); setDetailSheetOpen(true); }}>
+                                <DropdownMenuItem onClick={() => { setDetailInvoiceId(Number(invoice.id)); setDetailSheetOpen(true); }}>
                                   <FileText className="mr-2 h-4 w-4" />
                                   Revisar
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleDownloadPDF(invoice.id)}>
+                                <DropdownMenuItem onClick={() => handleDownloadPDF(Number(invoice.id))}>
                                   <Printer className="mr-2 h-4 w-4" />
                                   Imprimir
                                 </DropdownMenuItem>

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
-import apiClient from '@/lib/api';
+import { authService } from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
 
 export default function RegisterPage() {
@@ -24,16 +24,8 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      const response = await apiClient.post('/auth/register', {
-        email,
-        password,
-        fullName,
-      });
-
-      const { access_token, user } = response.data;
-
-      // Guardar autenticación en el store
-      setAuth(user, access_token);
+      const { access_token, user } = await authService.register({ email, password, fullName });
+      setAuth(user as unknown as Parameters<typeof setAuth>[0], access_token);
 
       // Redirigir al dashboard
       router.push('/');

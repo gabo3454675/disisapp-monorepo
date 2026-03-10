@@ -9,6 +9,7 @@ import {
   Query,
   ParseIntPipe,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import { TenantsService } from './tenants.service';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
@@ -67,6 +68,49 @@ export class TenantsController {
   }
 
   /**
+   * Historial de tasas BCV (auditoría). Query: desde?, hasta?, limit?
+   */
+  @Get('organization/tasas-historicas')
+  @UseGuards(OrganizationGuard, RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN', 'MANAGER')
+  async getTasasHistorial(
+    @ActiveOrganization() organizationId: number,
+    @Query('desde') desde?: string,
+    @Query('hasta') hasta?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const limitNum = limit ? parseInt(limit, 10) : undefined;
+    return this.tenantsService.getTasasHistorial(organizationId, {
+      desde,
+      hasta,
+      limit: limitNum,
+    });
+  }
+
+  /**
+   * Reporte Ganancia/Pérdida por Diferencial Cambiario. Query: desde, hasta (YYYY-MM-DD).
+   */
+  @Get('organization/reporte-diferencial-cambiario')
+  @UseGuards(OrganizationGuard, RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN', 'MANAGER')
+  async getReporteDiferencialCambiario(
+    @ActiveOrganization() organizationId: number,
+    @Query('desde') desde: string,
+    @Query('hasta') hasta: string,
+  ) {
+    if (!desde || !hasta) {
+      throw new BadRequestException(
+        'Query desde y hasta (YYYY-MM-DD) son requeridos',
+      );
+    }
+    return this.tenantsService.getReporteDiferencialCambiario(
+      organizationId,
+      desde,
+      hasta,
+    );
+  }
+
+  /**
    * Historial de cambios (audit log). Solo SUPER_ADMIN y ADMIN.
    */
   @Get('organization/audit-log')
@@ -78,6 +122,20 @@ export class TenantsController {
   ) {
     const limitNum = limit ? parseInt(limit, 10) : 100;
     return this.tenantsService.getAuditLog(organizationId, limitNum);
+  }
+
+  /**
+   * Auditoría de acciones (precio, factura eliminada, autoconsumo). Solo SUPER_ADMIN y ADMIN.
+   */
+  @Get('organization/activity-log')
+  @UseGuards(OrganizationGuard, RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  async getActivityLog(
+    @ActiveOrganization() organizationId: number,
+    @Query('limit') limit?: string,
+  ) {
+    const limitNum = limit ? parseInt(limit, 10) : 100;
+    return this.tenantsService.getActivityLog(organizationId, limitNum);
   }
 
   /**

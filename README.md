@@ -46,21 +46,21 @@ npm install -g pnpm
 pnpm install
 ```
 
-3. **Configurar variables de entorno**:
+3. **Configurar variables de entorno** (necesario para el primer arranque):
 
-   Backend (`apps/server/.env`):
-   ```env
-   DATABASE_URL="postgresql://user:password@localhost:5432/billing_db?schema=public"
-   JWT_SECRET="your-super-secret-jwt-key"
-   JWT_EXPIRES_IN="24h"
-   PORT=3001
-   FRONTEND_URL="http://localhost:3000"
-   ```
+   Cada app incluye un `.env.example` con todas las variables y comentarios. Cópialo a `.env` (server) o `.env.local` (client) y completa los valores.
 
-   Frontend (`apps/client/.env.local`):
-   ```env
-   NEXT_PUBLIC_API_URL=http://localhost:3001/api
+   **Backend** (`apps/server`):
+   ```bash
+   cp .env.example .env
    ```
+   Edita `.env` y define al menos: `DATABASE_URL`, `JWT_SECRET`. El resto tiene valores por defecto o es opcional (S3, Firebase, etc.). Ver comentarios en `.env.example`.
+
+   **Frontend** (`apps/client`):
+   ```bash
+   cp .env.example .env.local
+   ```
+   Edita `.env.local` y define `NEXT_PUBLIC_API_URL` (ej: `http://localhost:3001/api`). Ver `.env.example` para la descripción de cada variable.
 
 4. **Configurar base de datos**:
 ```bash
@@ -87,6 +87,10 @@ pnpm prisma migrate dev
 - `pnpm dev` - Inicia servidor de desarrollo (puerto 3000)
 - `pnpm build` - Construye para producción
 - `pnpm start` - Inicia servidor de producción
+
+## ⚙️ Configuración inicial
+
+Los archivos **`.env.example`** en `apps/server` y `apps/client` son la referencia para la configuración inicial. Incluyen todas las variables usadas por cada app y comentarios sobre su uso (base de datos, JWT, CORS, S3, Firebase, etc.). Sin copiarlos y completar los valores mínimos, el servidor y el client no podrán arrancar correctamente.
 
 ## 📁 Módulos del Backend
 

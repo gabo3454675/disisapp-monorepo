@@ -73,7 +73,7 @@ interface DashboardHealth {
   topProductsByMargin: { productId: number; productName: string; margin: number }[];
   ticketPromedio: number;
   crecimientoMensual: number;
-  totalImpuestosAcumulados: number;
+  totalVentasMes: number;
 }
 
 const DEFAULT_HEALTH: DashboardHealth = {
@@ -81,7 +81,7 @@ const DEFAULT_HEALTH: DashboardHealth = {
   topProductsByMargin: [],
   ticketPromedio: 0,
   crecimientoMensual: 0,
-  totalImpuestosAcumulados: 0,
+  totalVentasMes: 0,
 };
 
 interface MarginErosionProduct {
@@ -217,12 +217,10 @@ export default function DashboardPage() {
   const canSeeCreatedByMe = isSuperAdmin || isAdmin || isManager;
   const { formatForDisplay, displayCurrency } = useDisplayCurrency();
 
-  const impuestosHealth = useMemo(() => {
-    const igtfUsd = health.totalImpuestosAcumulados;
-    const ivaUsd = (igtfUsd / 0.03) * 0.16;
-    const base = displayCurrency === 'BS' ? ivaUsd : igtfUsd;
-    return { value: base, sparkline: [base * 0.5, base * 0.7, base * 0.85, base, base * 1.05, base] };
-  }, [health.totalImpuestosAcumulados, displayCurrency]);
+  const ventasMesHealth = useMemo(() => {
+    const value = health.totalVentasMes;
+    return { value, sparkline: [value * 0.5, value * 0.7, value * 0.85, value, value * 1.05, value] };
+  }, [health.totalVentasMes]);
 
   const currentOrg = getCurrentOrganization();
   const orgWithRate = currentOrg && 'rateUpdatedAt' in currentOrg ? currentOrg : null;
@@ -664,7 +662,7 @@ export default function DashboardPage() {
                 </p>
               </div>
 
-              {/* KPI Cards: Venta promedio por factura, Crecimiento mensual, Total impuestos (IVA/IGTF según moneda) */}
+              {/* KPI Cards: Venta promedio, Crecimiento mensual, Ventas del mes (cobro real) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                 <MetricCard
                   title="Venta promedio por factura"
@@ -683,12 +681,12 @@ export default function DashboardPage() {
                   sparklineData={[0, Math.max(0, health.crecimientoMensual * 0.3), health.crecimientoMensual * 0.6, health.crecimientoMensual, health.crecimientoMensual * 1.05, health.crecimientoMensual]}
                 />
                 <MetricCard
-                  title={displayCurrency === 'BS' ? 'Impuestos acumulados (IVA est.)' : 'Impuestos acumulados (IGTF est.)'}
-                  value={loadingHealth ? '—' : formatForDisplay(impuestosHealth.value)}
-                  change={displayCurrency === 'BS' ? 'IVA 16% · mes en curso' : 'IGTF 3% · mes en curso'}
+                  title="Ventas del mes"
+                  value={loadingHealth ? '—' : formatForDisplay(ventasMesHealth.value)}
+                  change="Mes en curso"
                   changeType="positive"
                   icon={Banknote}
-                  sparklineData={impuestosHealth.sparkline}
+                  sparklineData={ventasMesHealth.sparkline}
                 />
               </div>
 

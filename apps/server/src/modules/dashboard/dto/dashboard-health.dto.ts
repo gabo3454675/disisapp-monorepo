@@ -15,5 +15,5 @@ export class DashboardHealthDto {
   topProductsByMargin: TopProductMarginDto[];
   ticketPromedio: number;
   crecimientoMensual: number; // porcentaje, ej. 12.5
-  totalImpuestosAcumulados: number; // IVA/IGTF estimado del mes
+  totalVentasMes: number; // Total facturado en el mes (cobro real, sin IVA/IGTF)
 }

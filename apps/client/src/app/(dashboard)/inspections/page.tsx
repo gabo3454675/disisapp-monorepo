@@ -23,7 +23,6 @@ import {
 import type { DiagramPin, DiagramView, PinStatus, UsedPart } from '@/types/inspection';
 
 const DAVEAN_NAME = 'Davean';
-const ALLOWED_INSPECTION_ROLES = ['ADMIN', 'OPERATOR'];
 
 interface Product {
   id: number;
@@ -36,7 +35,7 @@ export default function InspectionsPage() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const getCurrentOrganization = useAuthStore((s) => s.getCurrentOrganization);
-  const { canManageInventory, role } = usePermission();
+  const { canManageInventory } = usePermission();
   const [pins, setPins] = useState<DiagramPin[]>([]);
   const [pinMode, setPinMode] = useState<PinStatus>('damaged');
   const [activeView, setActiveView] = useState<DiagramView>('frontal');
@@ -77,7 +76,7 @@ export default function InspectionsPage() {
     img.src = '/logo-davean.png';
   }, [accessChecked]);
 
-  // Redirigir al dashboard si no pertenece a Davean o no tiene rol ADMIN/OPERATOR (Super Admin siempre puede)
+  // Redirigir si no es organización Davean ni SUPER_ADMIN (módulo exclusivo)
   useEffect(() => {
     if (user?.isSuperAdmin) {
       setAccessChecked(true);
@@ -85,14 +84,13 @@ export default function InspectionsPage() {
     }
     const currentOrg = getCurrentOrganization() as { name?: string } | null;
     const orgName = currentOrg?.name ?? '';
-    const roleUpper = String(role ?? '').toUpperCase();
-    const allowed = orgName === DAVEAN_NAME && ALLOWED_INSPECTION_ROLES.includes(roleUpper);
+    const allowed = orgName === DAVEAN_NAME;
     if (!allowed) {
       router.replace('/?error=inspeccion_restringida');
       return;
     }
     setAccessChecked(true);
-  }, [user?.isSuperAdmin, getCurrentOrganization, role, router]);
+  }, [user?.isSuperAdmin, getCurrentOrganization, router]);
 
   useEffect(() => {
     if (!accessChecked) return;

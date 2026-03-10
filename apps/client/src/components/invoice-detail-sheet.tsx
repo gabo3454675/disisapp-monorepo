@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/table';
 import { AssignTaskModal } from '@/components/assign-task-modal';
 import { TaskResolutionBar } from '@/components/task-resolution-bar';
-import apiClient from '@/lib/api';
+import apiClient, { invoiceService } from '@/lib/api';
 import { Loader2, UserPlus, Download, MessageCircle, CheckCircle } from 'lucide-react';
 
 interface InvoiceItem {
@@ -39,11 +39,20 @@ interface Customer {
   phone?: string | null;
 }
 
+interface PaymentLine {
+  method: string;
+  amount: number;
+  currency: string;
+}
+
 interface Invoice {
   id: number;
   totalAmount: number;
   status: string;
   paymentMethod: string;
+  montoUsd?: number | null;
+  montoBs?: number | null;
+  paymentLines?: PaymentLine[];
   notes?: string | null;
   createdAt: string;
   customer: Customer | null;
@@ -70,6 +79,31 @@ const formatDate = (dateString: string) =>
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(dateString));
+
+const PAYMENT_LABELS: Record<string, string> = {
+  CASH: 'Efectivo $',
+  CASH_USD: 'Efectivo $',
+  CASH_BS: 'Efectivo Bs',
+  PAGO_MOVIL: 'Pago Móvil Bs',
+  ZELLE: 'Zelle $',
+  CARD: 'Tarjeta',
+  CREDIT: 'Crédito',
+  MIXED: 'Mixto',
+};
+
+function getPaymentDisplay(inv: Invoice): string {
+  if (inv.paymentLines && inv.paymentLines.length > 0) {
+    return inv.paymentLines
+      .map((p) => {
+        const label = PAYMENT_LABELS[p.method] ?? p.method;
+        const sym = p.currency === 'VES' ? 'Bs' : '$';
+        return `${label} ${Number(p.amount).toFixed(2)} ${sym}`;
+      })
+      .join(' + ');
+  }
+  const m = (inv.paymentMethod || 'CASH').toUpperCase();
+  return PAYMENT_LABELS[m] ?? inv.paymentMethod ?? '—';
+}
 
 export function InvoiceDetailSheet({
   invoiceId,
@@ -108,7 +142,7 @@ export function InvoiceDetailSheet({
   const handleDownloadPDF = async () => {
     if (!invoiceId) return;
     try {
-      const response = await apiClient.get(`/invoices/${invoiceId}/pdf`, { responseType: 'blob' });
+      const response = await invoiceService.getPdf(invoiceId);
       const contentType = response.headers?.['content-type'] ?? '';
       if (contentType.includes('application/json')) {
         const text = await (response.data as Blob).text();
@@ -177,6 +211,11 @@ export function InvoiceDetailSheet({
                 {invoice.customer?.phone && (
                   <p className="text-sm text-muted-foreground">{invoice.customer.phone}</p>
                 )}
+              </div>
+
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Método de pago</p>
+                <p className="font-medium">{getPaymentDisplay(invoice)}</p>
               </div>
 
               <div>

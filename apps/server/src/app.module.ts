@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { CacheModule } from '@nestjs/cache-manager';
 import { HttpCacheTenantInterceptor } from './common/interceptors/http-cache-tenant.interceptor';
+import { TenantContextInterceptor } from './common/interceptors/tenant-context.interceptor';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -23,6 +24,9 @@ import { TasksModule } from './modules/tasks/tasks.module';
 import { CreditsModule } from './modules/credits/credits.module';
 import { BackupModule } from './modules/backup/backup.module';
 import { VehicleInspectionsModule } from './modules/vehicle-inspections/vehicle-inspections.module';
+import { CierreCajaModule } from './modules/cierre-caja/cierre-caja.module';
+import { ActivityLogModule } from './modules/activity-log/activity-log.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -52,6 +56,9 @@ import { VehicleInspectionsModule } from './modules/vehicle-inspections/vehicle-
     CreditsModule,
     BackupModule,
     VehicleInspectionsModule,
+    CierreCajaModule,
+    ActivityLogModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [
@@ -63,6 +70,10 @@ import { VehicleInspectionsModule } from './modules/vehicle-inspections/vehicle-
     {
       provide: APP_INTERCEPTOR,
       useClass: HttpCacheTenantInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: TenantContextInterceptor,
     },
   ],
 })

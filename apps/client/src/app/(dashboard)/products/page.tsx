@@ -22,11 +22,12 @@ import {
 } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { Plus, Edit, Trash2, Search, Loader2, Upload, FileSpreadsheet, CheckCircle2, XCircle } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Loader2, Upload, FileSpreadsheet, CheckCircle2, XCircle, Package } from 'lucide-react';
 import apiClient from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useDebounce } from '@/hooks/useDebounce';
 import { usePermission } from '@/hooks/usePermission';
+import { StockAdjustSheet } from '@/components/stock-adjust-sheet';
 
 type SalePriceCurrency = 'USD' | 'VES';
 
@@ -64,6 +65,8 @@ export default function ProductsPage() {
     minStock: '5',
   });
   const [submitting, setSubmitting] = useState(false);
+  const [stockSheetOpen, setStockSheetOpen] = useState(false);
+  const [stockSheetProduct, setStockSheetProduct] = useState<Product | null>(null);
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState<{
     uploading: boolean;
@@ -478,14 +481,28 @@ export default function ProductsPage() {
                         </div>
                         <div className="flex shrink-0 gap-1">
                           {canManageProducts && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              onClick={() => handleOpenDialog(product)}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => {
+                                  setStockSheetProduct(product);
+                                  setStockSheetOpen(true);
+                                }}
+                                title="Ajustar stock"
+                              >
+                                <Package className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => handleOpenDialog(product)}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                            </>
                           )}
                           {canDelete && (
                             <Button
@@ -524,13 +541,26 @@ export default function ProductsPage() {
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
                               {canManageProducts && (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => handleOpenDialog(product)}
-                                >
-                                  <Edit className="h-4 w-4" />
-                                </Button>
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => {
+                                      setStockSheetProduct(product);
+                                      setStockSheetOpen(true);
+                                    }}
+                                    title="Ajustar stock"
+                                  >
+                                    <Package className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => handleOpenDialog(product)}
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                </>
                               )}
                               {canDelete && (
                                 <Button
@@ -687,6 +717,13 @@ export default function ProductsPage() {
             </form>
           </DialogContent>
         </Dialog>
+
+        <StockAdjustSheet
+          product={stockSheetProduct}
+          open={stockSheetOpen}
+          onOpenChange={setStockSheetOpen}
+          onSaved={fetchProducts}
+        />
       </div>
     </div>
   );

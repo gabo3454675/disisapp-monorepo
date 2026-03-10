@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
+import { useDebounce } from '@/hooks/useDebounce';
 import {
   Table,
   TableBody,
@@ -15,7 +16,7 @@ import { Download, Loader2, Search, FileText, UserPlus, Trash2 } from 'lucide-re
 import { Input } from '@/components/ui/input';
 import { InvoiceDetailSheet } from '@/components/invoice-detail-sheet';
 import { AssignTaskModal } from '@/components/assign-task-modal';
-import apiClient from '@/lib/api';
+import { apiClient, invoiceService } from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePermission } from '@/hooks/usePermission';
 import { useDisplayCurrency } from '@/hooks/useDisplayCurrency';
@@ -60,13 +61,15 @@ export default function InvoicesPage() {
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [assignModalInvoiceId, setAssignModalInvoiceId] = useState<number | null>(null);
 
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
+
   const fetchInvoices = useCallback(async () => {
     if (!selectedCompanyId) return;
 
     try {
       setLoading(true);
-      const response = await apiClient.get<Invoice[]>('/invoices');
-      setInvoices(response.data);
+      const data = await invoiceService.getAll();
+      setInvoices(data as unknown as Invoice[]);
     } catch (error) {
       console.error('Error fetching invoices:', error);
       alert('Error al cargar las facturas');
@@ -96,7 +99,7 @@ export default function InvoicesPage() {
   const handleDeleteInvoice = async (invoiceId: number) => {
     if (!confirm('¿Eliminar esta factura? Esta acción no se puede deshacer.')) return;
     try {
-      await apiClient.delete(`/invoices/${invoiceId}`);
+      await invoiceService.delete(invoiceId);
       fetchInvoices();
     } catch (error: any) {
       console.error('Error deleting invoice:', error);
@@ -106,10 +109,7 @@ export default function InvoicesPage() {
 
   const handleDownloadPDF = async (invoiceId: number) => {
     try {
-      const response = await apiClient.get(`/invoices/${invoiceId}/pdf`, {
-        responseType: 'blob',
-      });
-
+      const response = await invoiceService.getPdf(invoiceId);
       const contentType = response.headers?.['content-type'] ?? '';
       if (contentType.includes('application/json')) {
         const text = await (response.data as Blob).text();
@@ -117,7 +117,6 @@ export default function InvoicesPage() {
         alert(data?.message ?? 'Error al descargar la factura');
         return;
       }
-
       const blob = new Blob([response.data], { type: 'application/pdf' });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -145,14 +144,16 @@ export default function InvoicesPage() {
     }).format(new Date(dateString));
   };
 
-  const filteredInvoices = invoices.filter((invoice) => {
-    const query = searchQuery.toLowerCase();
-    return (
-      invoice.id.toString().includes(query) ||
-      invoice.customer?.name.toLowerCase().includes(query) ||
-      invoice.totalAmount.toString().includes(query)
+  const filteredInvoices = useMemo(() => {
+    const query = (debouncedSearchQuery ?? '').toLowerCase().trim();
+    if (!query) return invoices;
+    return invoices.filter(
+      (invoice) =>
+        invoice.id.toString().includes(query) ||
+        invoice.customer?.name.toLowerCase().includes(query) ||
+        invoice.totalAmount.toString().includes(query),
     );
-  });
+  }, [invoices, debouncedSearchQuery]);
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto">

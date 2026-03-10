@@ -15,6 +15,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CacheTTL } from '@nestjs/cache-manager';
 import { HttpCacheTenantInterceptor } from '@/common/interceptors/http-cache-tenant.interceptor';
+import { ActiveUser } from '@/common/decorators/active-user.decorator';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -58,6 +59,14 @@ export class ProductsController {
     return this.productsService.findByBarcode(barcode, organizationId);
   }
 
+  /**
+   * Productos con stock por debajo del mínimo (alertas de inventario).
+   */
+  @Get('alertas-stock')
+  getAlertasStock(@ActiveOrganization() organizationId: number) {
+    return this.productsService.getAlertasStock(organizationId);
+  }
+
   @Get(':id')
   findOne(
     @Param('id', ParseIntPipe) id: number,
@@ -71,8 +80,9 @@ export class ProductsController {
     @Param('id', ParseIntPipe) id: number,
     @Body() updateProductDto: UpdateProductDto,
     @ActiveOrganization() organizationId: number,
+    @ActiveUser() user?: { id: number },
   ) {
-    return this.productsService.update(id, updateProductDto, organizationId);
+    return this.productsService.update(id, updateProductDto, organizationId, user?.id);
   }
 
   @Delete(':id')

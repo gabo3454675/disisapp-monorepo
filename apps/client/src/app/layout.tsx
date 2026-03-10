@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import { Toaster } from 'sonner';
 import { ThemeProvider } from '@/components/theme-provider';
+import { API_BASE_URL } from '@/lib/config/api-config';
 import './globals.css';
 
 const inter = Inter({ subsets: ['latin'] });
@@ -55,16 +56,12 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const apiUrl =
-    typeof process.env.NEXT_PUBLIC_API_URL === 'string' && process.env.NEXT_PUBLIC_API_URL
-      ? process.env.NEXT_PUBLIC_API_URL
-      : 'http://localhost:3001/api';
   return (
     <html lang="es" suppressHydrationWarning>
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `window.__NEXT_PUBLIC_API_URL__=${JSON.stringify(apiUrl)};`,
+            __html: `window.__NEXT_PUBLIC_API_URL__=${JSON.stringify(API_BASE_URL)};`,
           }}
         />
         <script

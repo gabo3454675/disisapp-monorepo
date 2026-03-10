@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import axios from 'axios';
+import { publicInvoiceRoutes } from '@/lib/config/api-config';
 import { Download, Share2, Loader2, CheckCircle, XCircle, MessageCircle, QrCode, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
@@ -79,9 +80,7 @@ export default function PublicInvoicePage() {
     const fetchInvoice = async () => {
       try {
         setLoading(true);
-        const response = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api'}/invoices/public/${token}`,
-        );
+        const response = await axios.get(publicInvoiceRoutes.byToken(token));
         setInvoice(response.data);
         setError(null);
       } catch (err: any) {
@@ -98,8 +97,7 @@ export default function PublicInvoicePage() {
 
   const handleDownloadPDF = () => {
     if (!token) return;
-    const pdfUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api'}/invoices/public/${token}/pdf`;
-    window.open(pdfUrl, '_blank');
+    window.open(publicInvoiceRoutes.pdf(token), '_blank');
   };
 
   const handleShareWhatsApp = () => {
@@ -117,7 +115,7 @@ export default function PublicInvoicePage() {
     try {
       setMarkingAsPaid(true);
       const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api'}/invoices/public/${token}/mark-paid`,
+        publicInvoiceRoutes.markPaid(token),
         {
           markedBy: clientName || invoice?.customer?.name || undefined,
         },

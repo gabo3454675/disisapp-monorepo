@@ -5,6 +5,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '@/common/prisma/prisma.service';
+import { ActivityLogService } from '@/modules/activity-log/activity-log.service';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { getCompanyIdFromOrganization } from '@/common/helpers/organization.helper';
 import { v4 as uuidv4 } from 'uuid';
@@ -22,11 +23,16 @@ export class InvoicesService {
     private prisma: PrismaService,
     private creditsService: CreditsService,
     private tasksService: TasksService,
+    private activityLog: ActivityLogService,
   ) {}
 
   async create(createInvoiceDto: CreateInvoiceDto, organizationId: number, sellerId: number) {
-    const { items, customerId, notes, paymentMethod: paymentMethodDto } = createInvoiceDto;
-    const isCredit = paymentMethodDto?.toUpperCase() === 'CREDIT';
+    const { items, customerId, notes, paymentMethod: paymentMethodDto, payments: paymentsDto } =
+      createInvoiceDto;
+    const useHybridPayments = Array.isArray(paymentsDto) && paymentsDto.length > 0;
+    const isCredit =
+      paymentMethodDto?.toUpperCase() === 'CREDIT' ||
+      (useHybridPayments && paymentsDto!.some((p) => p.method === 'CREDIT'));
 
     if (!items || items.length === 0) {
       throw new BadRequestException('La factura debe tener al menos un producto');
@@ -38,6 +44,20 @@ export class InvoicesService {
     const companyId = await getCompanyIdFromOrganization(this.prisma, organizationId);
 
     const invoice = await this.prisma.$transaction(async (tx) => {
+      const org = await tx.organization.findUnique({
+        where: { id: organizationId },
+        select: { exchangeRate: true },
+      });
+      const rate = Number(org?.exchangeRate ?? 1);
+      const tasa = await tx.tasaHistorica.create({
+        data: {
+          organizationId,
+          rate,
+          source: 'BCV',
+          effectiveAt: new Date(),
+        },
+      });
+
       const productIds = items.map((item) => item.productId);
       const products = await tx.product.findMany({
         where: { id: { in: productIds }, organizationId },
@@ -91,10 +111,63 @@ export class InvoicesService {
         }
       }
 
-      const paymentMethod = isCredit ? 'CREDIT' : (paymentMethodDto && ['CASH', 'ZELLE', 'CARD', 'CREDIT'].includes(String(paymentMethodDto).toUpperCase()) ? String(paymentMethodDto).toUpperCase() : 'CASH');
+      let paymentMethod: string;
+      let montoUsd: number;
+      let montoBs: number;
+      const tasaReferencia = rate;
+      const paymentLinesData: { method: string; amount: number; currency: string }[] = [];
+
+      if (useHybridPayments && paymentsDto!.length > 0) {
+        let sumUsd = 0;
+        let sumBs = 0;
+        for (const p of paymentsDto!) {
+          if (p.currency === 'USD') {
+            sumUsd += p.amount;
+          } else {
+            sumBs += p.amount;
+          }
+          paymentLinesData.push({
+            method: p.method,
+            amount: p.amount,
+            currency: p.currency,
+          });
+        }
+        const totalInUsd = sumUsd + sumBs / rate;
+        if (Math.abs(totalInUsd - totalAmount) > 0.02) {
+          throw new BadRequestException(
+            `La suma de los pagos ($${totalInUsd.toFixed(2)} USD eq.) no coincide con el total de la factura ($${totalAmount.toFixed(2)}).`,
+          );
+        }
+        montoUsd = sumUsd;
+        montoBs = sumBs;
+        paymentMethod = paymentLinesData.length === 1 ? paymentLinesData[0].method : 'MIXED';
+      } else {
+        paymentMethod = isCredit
+          ? 'CREDIT'
+          : paymentMethodDto && ['CASH', 'ZELLE', 'CARD', 'CREDIT'].includes(String(paymentMethodDto).toUpperCase())
+            ? String(paymentMethodDto).toUpperCase()
+            : 'CASH';
+        montoUsd = totalAmount;
+        montoBs = 0;
+        paymentLinesData.push({
+          method: paymentMethod === 'CASH' ? 'CASH_USD' : paymentMethod === 'ZELLE' ? 'ZELLE' : paymentMethod === 'CARD' ? 'CARD' : 'CREDIT',
+          amount: totalAmount,
+          currency: 'USD',
+        });
+      }
+
       const paymentStatus = isCredit ? PaymentStatus.pending_credit : PaymentStatus.paid;
 
-      return tx.invoice.create({
+      const mapToMetodo = (method: string): string => {
+        const m = method.toUpperCase();
+        if (m === 'CASH_USD' || m === 'CASH_BS') return 'EFECTIVO';
+        if (m === 'PAGO_MOVIL') return 'PAGO_MOVIL';
+        if (m === 'ZELLE') return 'ZELLE';
+        if (m === 'CARD' || m === 'CREDIT') return 'PUNTO';
+        return 'EFECTIVO';
+      };
+
+      const created = await tx.invoice.create({
         data: {
           companyId,
           organizationId,
@@ -104,15 +177,38 @@ export class InvoicesService {
           status: 'PAID',
           paymentMethod,
           paymentStatus,
+          montoUsd,
+          montoBs,
+          tasaReferencia,
           notes: notes || null,
           publicToken: uuidv4(),
+          tasaHistoricaId: tasa.id,
           items: { create: invoiceItemsData },
+          paymentLines: {
+            create: paymentLinesData.map((p) => ({
+              method: p.method as any,
+              amount: p.amount,
+              currency: p.currency as any,
+            })),
+          },
+          pagos: {
+            create: paymentLinesData.map((p) => ({
+              moneda: p.currency,
+              metodo: mapToMetodo(p.method),
+              monto: p.amount,
+              tasaCambio: tasaReferencia,
+              tenantId: organizationId,
+            })),
+          },
         },
         include: {
           items: { include: { product: true } },
           customer: true,
+          paymentLines: true,
+          pagos: true,
         },
       });
+      return created;
     });
 
     if (isCredit && customerId && invoice) {
@@ -157,6 +253,7 @@ export class InvoicesService {
       include: {
         items: { include: { product: true } },
         customer: true,
+        paymentLines: true,
       },
     })!;
   }
@@ -164,19 +261,14 @@ export class InvoicesService {
   async findAll(organizationId: number) {
     return this.prisma.invoice.findMany({
       where: {
-        organizationId, // OBLIGATORIO: Filtro por organización para aislamiento multi-tenant
+        organizationId,
       },
       include: {
-        items: {
-          include: {
-            product: true,
-          },
-        },
+        items: { include: { product: true } },
         customer: true,
+        paymentLines: true,
       },
-      orderBy: {
-        createdAt: 'desc',
-      },
+      orderBy: { createdAt: 'desc' },
     });
   }
 
@@ -219,6 +311,7 @@ export class InvoicesService {
       include: {
         items: { include: { product: true } },
         customer: true,
+        paymentLines: true,
       },
       orderBy: { createdAt: 'asc' },
     });
@@ -266,43 +359,39 @@ export class InvoicesService {
   }
 
   /**
-   * Agrupa facturas por día: total ventas, total IGTF (3% cuando pago en divisas) y total por método de pago.
+   * Agrupa facturas por día: total ventas y total por método de pago.
+   * Sin IVA/IGTF: solo cobro real (multimoneda).
    */
   private buildDailySummary(
     invoices: Array<{
       totalAmount: unknown;
       paymentMethod: string;
+      paymentLines?: Array<{ method: string; amount: unknown; currency: string }>;
       createdAt: Date;
     }>,
   ): Array<{
     date: string;
     totalSales: number;
-    totalIgft: number;
     byPaymentMethod: Record<string, number>;
   }> {
-    const byDate = new Map<
-      string,
-      { totalSales: number; totalIgft: number; byPaymentMethod: Record<string, number> }
-    >();
-
-    const paymentMethodsUsd = ['ZELLE', 'CARD']; // IGTF 3% según flujo cuando pago en USD
+    const byDate = new Map<string, { totalSales: number; byPaymentMethod: Record<string, number> }>();
 
     for (const inv of invoices) {
       const total = this.toNum(inv.totalAmount);
       const dateKey = new Date(inv.createdAt).toISOString().slice(0, 10);
       if (!byDate.has(dateKey)) {
-        byDate.set(dateKey, {
-          totalSales: 0,
-          totalIgft: 0,
-          byPaymentMethod: {},
-        });
+        byDate.set(dateKey, { totalSales: 0, byPaymentMethod: {} });
       }
       const day = byDate.get(dateKey)!;
       day.totalSales += total;
-      const method = (inv.paymentMethod || 'CASH').toUpperCase();
-      day.byPaymentMethod[method] = (day.byPaymentMethod[method] ?? 0) + total;
-      if (paymentMethodsUsd.includes(method)) {
-        day.totalIgft += Math.round(total * 0.03 * 100) / 100;
+      if (inv.paymentLines && inv.paymentLines.length > 0) {
+        for (const line of inv.paymentLines) {
+          const key = `${line.method}_${line.currency}`;
+          day.byPaymentMethod[key] = (day.byPaymentMethod[key] ?? 0) + this.toNum(line.amount);
+        }
+      } else {
+        const method = (inv.paymentMethod || 'CASH').toUpperCase();
+        day.byPaymentMethod[method] = (day.byPaymentMethod[method] ?? 0) + total;
       }
     }
 
@@ -310,7 +399,6 @@ export class InvoicesService {
       .map(([date, data]) => ({
         date,
         totalSales: Math.round(data.totalSales * 100) / 100,
-        totalIgft: Math.round(data.totalIgft * 100) / 100,
         byPaymentMethod: data.byPaymentMethod,
       }))
       .sort((a, b) => a.date.localeCompare(b.date));
@@ -391,10 +479,25 @@ export class InvoicesService {
 
     const invoice = await this.prisma.invoice.findFirst({
       where: { id, organizationId },
+      include: { customer: { select: { name: true } } },
     });
     if (!invoice) {
       throw new NotFoundException(`Factura con ID ${id} no encontrada`);
     }
+
+    await this.activityLog.log({
+      organizationId,
+      userId,
+      action: 'INVOICE_DELETED',
+      entityType: 'invoice',
+      entityId: String(id),
+      newValue: {
+        totalAmount: Number(invoice.totalAmount),
+        paymentMethod: invoice.paymentMethod,
+        status: invoice.status,
+      },
+      summary: `Factura #${id} eliminada. Total: $${Number(invoice.totalAmount).toFixed(2)}. Cliente: ${(invoice.customer as { name?: string })?.name ?? 'N/A'}.`,
+    });
 
     await this.prisma.$transaction([
       this.prisma.task.updateMany({
@@ -423,18 +526,18 @@ export class InvoicesService {
         totalAmount: true,
         status: true,
         paymentMethod: true,
+        montoUsd: true,
+        montoBs: true,
+        tasaReferencia: true,
         notes: true,
         pdfUrl: true,
-        publicToken: true, // Incluir publicToken
+        publicToken: true,
         createdAt: true,
-        items: {
-          include: {
-            product: true,
-          },
-        },
+        items: { include: { product: true } },
         customer: true,
         company: true,
         seller: true,
+        paymentLines: true,
       },
     });
 
@@ -463,6 +566,9 @@ export class InvoicesService {
         totalAmount: true,
         status: true,
         paymentMethod: true,
+        montoUsd: true,
+        montoBs: true,
+        tasaReferencia: true,
         notes: true,
         pdfUrl: true,
         publicToken: true,
@@ -472,27 +578,15 @@ export class InvoicesService {
         viewCount: true,
         lastViewedAt: true,
         createdAt: true,
-        items: {
-          include: {
-            product: true,
-          },
-        },
+        items: { include: { product: true } },
         customer: true,
         company: true,
+        paymentLines: true,
         organization: {
-          select: {
-            id: true,
-            nombre: true,
-            slug: true,
-            plan: true,
-          },
+          select: { id: true, nombre: true, slug: true, plan: true },
         },
         seller: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-          },
+          select: { id: true, fullName: true, email: true },
         },
       },
     });
