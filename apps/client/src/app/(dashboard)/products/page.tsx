@@ -119,9 +119,13 @@ export default function ProductsPage() {
       setLoading(true);
       const response = await apiClient.get<Product[]>('/products');
       setProducts(response.data);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching products:', error);
-      alert('Error al cargar los productos');
+      const msg =
+        error?.response?.data?.message ||
+        error?.message ||
+        'Error al cargar los productos';
+      alert(typeof msg === 'string' ? msg : 'Error al cargar los productos');
     } finally {
       setLoading(false);
     }

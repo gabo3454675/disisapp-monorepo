@@ -117,7 +117,8 @@ export default function BottomNav() {
   const currentOrgName = (currentOrg as { name?: string } | null)?.name ?? '';
   const role = String(permissions.role || '').toUpperCase();
   const canSeeInspections =
-    !!user?.isSuperAdmin || currentOrgName === 'Davean';
+    !!user?.isSuperAdmin ||
+    currentOrgName.toLowerCase().includes('davean');
 
   const visibleMainNav = navigationItems.filter((item) =>
     canShowNavItem(item, permissions, { canSeeInspections }),
@@ -172,7 +173,7 @@ export default function BottomNav() {
               <MoreVertical className="h-5 w-5" />
             </Button>
           </SheetTrigger>
-          <SheetContent side="bottom" className="h-auto max-h-[80vh] pb-20">
+          <SheetContent side="bottom" className="h-auto max-h-[80vh] pb-20 overflow-y-auto">
             <SheetHeader>
               <SheetTitle>Menú</SheetTitle>
             </SheetHeader>

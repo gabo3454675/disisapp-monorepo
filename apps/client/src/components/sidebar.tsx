@@ -177,7 +177,8 @@ export default function Sidebar() {
   // Inspección vehículo: exclusivo para organización Davean o rol SUPER_ADMIN
   const currentOrgName = (getCurrentOrganization() as { name?: string } | null)?.name ?? '';
   const canSeeInspections =
-    !!user?.isSuperAdmin || currentOrgName === 'Davean';
+    !!user?.isSuperAdmin ||
+    currentOrgName.toLowerCase().includes('davean');
 
   return (
     <aside
