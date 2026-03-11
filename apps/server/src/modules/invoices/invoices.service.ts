@@ -43,131 +43,156 @@ export class InvoicesService {
 
     const companyId = await getCompanyIdFromOrganization(this.prisma, organizationId);
 
-    const invoice = await this.prisma.$transaction(async (tx) => {
-      const org = await tx.organization.findUnique({
-        where: { id: organizationId },
-        select: { exchangeRate: true },
-      });
-      const rate = Number(org?.exchangeRate ?? 1);
-      const tasa = await tx.tasaHistorica.create({
-        data: {
-          organizationId,
-          rate,
-          source: 'BCV',
-          effectiveAt: new Date(),
-        },
-      });
+    // Obtener tasa y registrar TasaHistorica fuera de una transacción interactiva
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { exchangeRate: true },
+    });
+    const rate = Number(org?.exchangeRate ?? 1);
+    const tasa = await this.prisma.tasaHistorica.create({
+      data: {
+        organizationId,
+        rate,
+        source: 'BCV',
+        effectiveAt: new Date(),
+      },
+    });
 
-      const productIds = items.map((item) => item.productId);
-      const products = await tx.product.findMany({
-        where: { id: { in: productIds }, organizationId },
-      });
+    // Cargar productos de la organización y validar stock
+    const productIds = items.map((item) => item.productId);
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: productIds }, organizationId },
+    });
 
-      if (products.length !== productIds.length) {
-        throw new NotFoundException('Uno o más productos no fueron encontrados');
+    if (products.length !== productIds.length) {
+      throw new NotFoundException('Uno o más productos no fueron encontrados');
+    }
+
+    let totalAmount = 0;
+    const invoiceItemsData: {
+      productId: number;
+      quantity: number;
+      unitPrice: number;
+      subtotal: number;
+    }[] = [];
+    const stockUpdates: ReturnType<PrismaService['product']['update']>[] = [];
+
+    for (const item of items) {
+      const product = products.find((p) => p.id === item.productId);
+      if (!product) {
+        throw new NotFoundException(`Producto con ID ${item.productId} no encontrado`);
+      }
+      if (product.stock < item.quantity) {
+        throw new BadRequestException(
+          `Stock insuficiente para ${product.name}. Disponible: ${product.stock}, Solicitado: ${item.quantity}`,
+        );
       }
 
-      let totalAmount = 0;
-      const invoiceItemsData = [];
+      const unitPrice = Number(product.salePrice);
+      const subtotal = unitPrice * item.quantity;
+      totalAmount += subtotal;
 
-      for (const item of items) {
-        const product = products.find((p) => p.id === item.productId);
-        if (!product) {
-          throw new NotFoundException(`Producto con ID ${item.productId} no encontrado`);
-        }
-        if (product.stock < item.quantity) {
-          throw new BadRequestException(
-            `Stock insuficiente para ${product.name}. Disponible: ${product.stock}, Solicitado: ${item.quantity}`,
-          );
-        }
+      invoiceItemsData.push({
+        productId: product.id,
+        quantity: item.quantity,
+        unitPrice,
+        subtotal,
+      });
 
-        const unitPrice = Number(product.salePrice);
-        const subtotal = unitPrice * item.quantity;
-        totalAmount += subtotal;
-
-        invoiceItemsData.push({
-          productId: product.id,
-          quantity: item.quantity,
-          unitPrice,
-          subtotal,
-        });
-
-        await tx.product.update({
+      // Preparamos el update de stock para ejecutarlo en una transacción por lote
+      stockUpdates.push(
+        this.prisma.product.update({
           where: { id: product.id },
           data: { stock: { decrement: item.quantity } },
-        });
+        }),
+      );
+    }
+
+    if (isCredit) {
+      const credit = await this.creditsService.getOrCreateCredit(customerId!, organizationId);
+      const available = Number(credit.limitAmount) - Number(credit.currentBalance);
+      if (credit.status !== 'ACTIVE') {
+        throw new BadRequestException('El crédito del cliente está suspendido');
       }
-
-      if (isCredit) {
-        const credit = await this.creditsService.getOrCreateCredit(customerId!, organizationId);
-        const available = Number(credit.limitAmount) - Number(credit.currentBalance);
-        if (credit.status !== 'ACTIVE') {
-          throw new BadRequestException('El crédito del cliente está suspendido');
-        }
-        if (available < totalAmount) {
-          throw new BadRequestException(
-            `Límite de crédito insuficiente. Disponible: $${available.toFixed(2)}, Total: $${totalAmount.toFixed(2)}`,
-          );
-        }
+      if (available < totalAmount) {
+        throw new BadRequestException(
+          `Límite de crédito insuficiente. Disponible: $${available.toFixed(
+            2,
+          )}, Total: $${totalAmount.toFixed(2)}`,
+        );
       }
+    }
 
-      let paymentMethod: string;
-      let montoUsd: number;
-      let montoBs: number;
-      const tasaReferencia = rate;
-      const paymentLinesData: { method: string; amount: number; currency: string }[] = [];
+    let paymentMethod: string;
+    let montoUsd: number;
+    let montoBs: number;
+    const tasaReferencia = rate;
+    const paymentLinesData: { method: string; amount: number; currency: string }[] = [];
 
-      if (useHybridPayments && paymentsDto!.length > 0) {
-        let sumUsd = 0;
-        let sumBs = 0;
-        for (const p of paymentsDto!) {
-          if (p.currency === 'USD') {
-            sumUsd += p.amount;
-          } else {
-            sumBs += p.amount;
-          }
-          paymentLinesData.push({
-            method: p.method,
-            amount: p.amount,
-            currency: p.currency,
-          });
+    if (useHybridPayments && paymentsDto!.length > 0) {
+      let sumUsd = 0;
+      let sumBs = 0;
+      for (const p of paymentsDto!) {
+        if (p.currency === 'USD') {
+          sumUsd += p.amount;
+        } else {
+          sumBs += p.amount;
         }
-        const totalInUsd = sumUsd + sumBs / rate;
-        if (Math.abs(totalInUsd - totalAmount) > 0.02) {
-          throw new BadRequestException(
-            `La suma de los pagos ($${totalInUsd.toFixed(2)} USD eq.) no coincide con el total de la factura ($${totalAmount.toFixed(2)}).`,
-          );
-        }
-        montoUsd = sumUsd;
-        montoBs = sumBs;
-        paymentMethod = paymentLinesData.length === 1 ? paymentLinesData[0].method : 'MIXED';
-      } else {
-        paymentMethod = isCredit
-          ? 'CREDIT'
-          : paymentMethodDto && ['CASH', 'ZELLE', 'CARD', 'CREDIT'].includes(String(paymentMethodDto).toUpperCase())
-            ? String(paymentMethodDto).toUpperCase()
-            : 'CASH';
-        montoUsd = totalAmount;
-        montoBs = 0;
         paymentLinesData.push({
-          method: paymentMethod === 'CASH' ? 'CASH_USD' : paymentMethod === 'ZELLE' ? 'ZELLE' : paymentMethod === 'CARD' ? 'CARD' : 'CREDIT',
-          amount: totalAmount,
-          currency: 'USD',
+          method: p.method,
+          amount: p.amount,
+          currency: p.currency,
         });
       }
+      const totalInUsd = sumUsd + sumBs / rate;
+      if (Math.abs(totalInUsd - totalAmount) > 0.02) {
+        throw new BadRequestException(
+          `La suma de los pagos ($${totalInUsd.toFixed(
+            2,
+          )} USD eq.) no coincide con el total de la factura ($${totalAmount.toFixed(2)}).`,
+        );
+      }
+      montoUsd = sumUsd;
+      montoBs = sumBs;
+      paymentMethod = paymentLinesData.length === 1 ? paymentLinesData[0].method : 'MIXED';
+    } else {
+      paymentMethod = isCredit
+        ? 'CREDIT'
+        : paymentMethodDto &&
+            ['CASH', 'ZELLE', 'CARD', 'CREDIT'].includes(String(paymentMethodDto).toUpperCase())
+          ? String(paymentMethodDto).toUpperCase()
+          : 'CASH';
+      montoUsd = totalAmount;
+      montoBs = 0;
+      paymentLinesData.push({
+        method:
+          paymentMethod === 'CASH'
+            ? 'CASH_USD'
+            : paymentMethod === 'ZELLE'
+              ? 'ZELLE'
+              : paymentMethod === 'CARD'
+                ? 'CARD'
+                : 'CREDIT',
+        amount: totalAmount,
+        currency: 'USD',
+      });
+    }
 
-      const paymentStatus = isCredit ? PaymentStatus.pending_credit : PaymentStatus.paid;
+    const paymentStatus = isCredit ? PaymentStatus.pending_credit : PaymentStatus.paid;
 
-      const mapToMetodo = (method: string): string => {
-        const m = method.toUpperCase();
-        if (m === 'CASH_USD' || m === 'CASH_BS') return 'EFECTIVO';
-        if (m === 'PAGO_MOVIL') return 'PAGO_MOVIL';
-        if (m === 'ZELLE') return 'ZELLE';
-        if (m === 'CARD' || m === 'CREDIT') return 'PUNTO';
-        return 'EFECTIVO';
-      };
+    const mapToMetodo = (method: string): string => {
+      const m = method.toUpperCase();
+      if (m === 'CASH_USD' || m === 'CASH_BS') return 'EFECTIVO';
+      if (m === 'PAGO_MOVIL') return 'PAGO_MOVIL';
+      if (m === 'ZELLE') return 'ZELLE';
+      if (m === 'CARD' || m === 'CREDIT') return 'PUNTO';
+      return 'EFECTIVO';
+    };
 
-      const created = await tx.invoice.create({
+    // Ejecutamos actualización de stock e inserción de factura en una sola transacción "batch"
+    const [_, invoice] = await this.prisma.$transaction([
+      ...stockUpdates,
+      this.prisma.invoice.create({
         data: {
           companyId,
           organizationId,
@@ -207,9 +232,8 @@ export class InvoicesService {
           paymentLines: true,
           pagos: true,
         },
-      });
-      return created;
-    });
+      }),
+    ]);
 
     if (isCredit && customerId && invoice) {
       const org = await this.prisma.organization.findUnique({
