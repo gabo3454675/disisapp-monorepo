@@ -40,6 +40,8 @@ interface Customer {
 
 interface Invoice {
   id: number;
+  /** Número consecutivo por organización (cada rancho tiene su propia secuencia) */
+  consecutiveNumber?: number | null;
   totalAmount: number;
   status: string;
   paymentMethod: string;
@@ -108,7 +110,8 @@ export default function InvoicesPage() {
       const link = document.createElement('a');
       link.href = url;
       link.target = '_blank';
-      link.download = `factura-${invoiceId}.pdf`;
+      const inv = invoices.find((i) => i.id === invoiceId);
+      link.download = `factura-${inv ? displayNumber(inv) : invoiceId}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -133,13 +136,17 @@ export default function InvoicesPage() {
   const filteredInvoices = useMemo(() => {
     const query = (debouncedSearchQuery ?? '').toLowerCase().trim();
     if (!query) return invoices;
+    const num = query.replace(/\D/g, '');
     return invoices.filter(
       (invoice) =>
+        (invoice.consecutiveNumber != null && String(invoice.consecutiveNumber).includes(num)) ||
         invoice.id.toString().includes(query) ||
         invoice.customer?.name.toLowerCase().includes(query) ||
         invoice.totalAmount.toString().includes(query),
     );
   }, [invoices, debouncedSearchQuery]);
+
+  const displayNumber = (invoice: Invoice) => invoice.consecutiveNumber ?? invoice.id;
 
   if (!canManageCustomers) {
     return (
@@ -161,6 +168,9 @@ export default function InvoicesPage() {
         <div>
           <h1 className="text-3xl md:text-4xl font-bold mb-2">Facturas</h1>
           <p className="text-muted-foreground">Historial de facturas generadas</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Las facturas y tickets se guardan aquí. Puede descargar o imprimir el PDF en cualquier momento con el botón &quot;PDF&quot; (en el momento o después).
+          </p>
         </div>
 
         <Card>
@@ -195,7 +205,7 @@ export default function InvoicesPage() {
                     <Card key={invoice.id} className="p-4">
                       <div className="flex justify-between items-start gap-2 mb-3">
                         <div>
-                          <p className="font-semibold">#{invoice.id}</p>
+                          <p className="font-semibold">#{displayNumber(invoice)}</p>
                           <p className="text-sm text-muted-foreground">
                             {invoice.customer?.name || 'Cliente General'} · {formatDate(invoice.createdAt)}
                           </p>
@@ -248,7 +258,7 @@ export default function InvoicesPage() {
                     <TableBody>
                       {filteredInvoices.map((invoice) => (
                         <TableRow key={invoice.id}>
-                          <TableCell className="font-medium">#{invoice.id}</TableCell>
+                          <TableCell className="font-medium">#{displayNumber(invoice)}</TableCell>
                           <TableCell>{invoice.customer?.name || 'Cliente General'}</TableCell>
                           <TableCell>{formatDate(invoice.createdAt)}</TableCell>
                           <TableCell className="font-semibold">

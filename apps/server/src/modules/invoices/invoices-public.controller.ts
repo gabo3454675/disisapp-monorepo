@@ -49,7 +49,7 @@ export class InvoicesPublicController {
     );
     res.set({
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="factura-${invoice.id}.pdf"`,
+      'Content-Disposition': `attachment; filename="factura-${(invoice as { consecutiveNumber?: number }).consecutiveNumber ?? invoice.id}.pdf"`,
       'Content-Length': pdfBuffer.length,
     });
     res.send(pdfBuffer);

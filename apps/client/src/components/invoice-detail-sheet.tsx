@@ -47,6 +47,7 @@ interface PaymentLine {
 
 interface Invoice {
   id: number;
+  consecutiveNumber?: number | null;
   totalAmount: number;
   status: string;
   paymentMethod: string;
@@ -155,7 +156,8 @@ export function InvoiceDetailSheet({
       const link = document.createElement('a');
       link.href = url;
       link.target = '_blank';
-      link.download = `factura-${invoiceId}.pdf`;
+      const num = invoice?.consecutiveNumber ?? invoiceId;
+      link.download = `factura-${num}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -175,7 +177,11 @@ export function InvoiceDetailSheet({
           <SheetHeader>
             <SheetTitle>Detalle de la factura</SheetTitle>
             <SheetDescription>
-              {invoiceId ? `Factura #${invoiceId}` : 'Cargando...'}
+              {invoice
+                ? `Factura #${invoice.consecutiveNumber ?? invoice.id}`
+                : invoiceId
+                  ? 'Cargando...'
+                  : '—'}
             </SheetDescription>
           </SheetHeader>
 
@@ -263,15 +269,28 @@ export function InvoiceDetailSheet({
               )}
 
               {!taskId && (
-                <div className="pt-4 border-t">
-                  <Button
-                    variant="default"
-                    className="w-full sm:w-auto"
-                    onClick={() => setAssignModalOpen(true)}
-                  >
-                    <UserPlus className="mr-2 h-4 w-4" />
-                    Asignar revisión
-                  </Button>
+                <div className="pt-4 border-t space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    Puede imprimir o guardar esta factura (ticket) en cualquier momento con el botón PDF.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="default"
+                      className="w-full sm:w-auto"
+                      onClick={handleDownloadPDF}
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      Descargar PDF
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full sm:w-auto"
+                      onClick={() => setAssignModalOpen(true)}
+                    >
+                      <UserPlus className="mr-2 h-4 w-4" />
+                      Asignar revisión
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>

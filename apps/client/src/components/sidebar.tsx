@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import Image from 'next/image';
 import { ChevronLeft, Grid2x2, ShoppingCart, Box, ChevronDown, LogOut, Check, DollarSign, FileText, Users, Settings, Download, CreditCard, Car, PackageMinus, History, BarChart3, Wallet, AlertTriangle, TrendingUp } from 'lucide-react';
@@ -109,10 +110,6 @@ export default function Sidebar() {
   };
 
   const activeItem = getActiveItem();
-
-  const handleNavigation = (href: string) => {
-    router.push(href);
-  };
 
   const handleLogout = () => {
     clearAuth();
@@ -386,6 +383,7 @@ export default function Sidebar() {
               .map((item) => (
                 <Button
                   key={item.id}
+                  asChild
                   variant={activeItem === item.id ? 'default' : 'ghost'}
                   className={cn(
                     'w-full justify-start gap-3',
@@ -393,10 +391,11 @@ export default function Sidebar() {
                       ? 'bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary'
                       : 'text-sidebar-foreground hover:bg-sidebar-accent',
                   )}
-                  onClick={() => handleNavigation(item.href)}
                 >
-                  <item.icon className="h-5 w-5 flex-shrink-0" />
-                  <span>{item.label}</span>
+                  <Link href={item.href} prefetch>
+                    <item.icon className="h-5 w-5 flex-shrink-0" />
+                    <span>{item.label}</span>
+                  </Link>
                 </Button>
               ))}
 
@@ -413,6 +412,7 @@ export default function Sidebar() {
               .map((item) => (
                 <Button
                   key={item.id}
+                  asChild
                   variant={activeItem === item.id ? 'default' : 'ghost'}
                   className={cn(
                     'w-full justify-start gap-3',
@@ -420,10 +420,11 @@ export default function Sidebar() {
                       ? 'bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary'
                       : 'text-sidebar-foreground hover:bg-sidebar-accent',
                   )}
-                  onClick={() => handleNavigation(item.href)}
                 >
-                  <item.icon className="h-5 w-5 flex-shrink-0" />
-                  <span>{item.label}</span>
+                  <Link href={item.href} prefetch>
+                    <item.icon className="h-5 w-5 flex-shrink-0" />
+                    <span>{item.label}</span>
+                  </Link>
                 </Button>
               ))}
 
@@ -440,6 +441,7 @@ export default function Sidebar() {
               .map((item) => (
                 <Button
                   key={item.id}
+                  asChild
                   variant={activeItem === item.id ? 'default' : 'ghost'}
                   className={cn(
                     'w-full justify-start gap-3',
@@ -447,10 +449,11 @@ export default function Sidebar() {
                       ? 'bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary'
                       : 'text-sidebar-foreground hover:bg-sidebar-accent',
                   )}
-                  onClick={() => handleNavigation(item.href)}
                 >
-                  <item.icon className="h-5 w-5 flex-shrink-0" />
-                  <span>{item.label}</span>
+                  <Link href={item.href} prefetch>
+                    <item.icon className="h-5 w-5 flex-shrink-0" />
+                    <span>{item.label}</span>
+                  </Link>
                 </Button>
               ))}
 
@@ -467,6 +470,7 @@ export default function Sidebar() {
               .map((item) => (
                 <Button
                   key={item.id}
+                  asChild
                   variant={activeItem === item.id ? 'default' : 'ghost'}
                   className={cn(
                     'w-full justify-start gap-3',
@@ -474,10 +478,11 @@ export default function Sidebar() {
                       ? 'bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary'
                       : 'text-sidebar-foreground hover:bg-sidebar-accent',
                   )}
-                  onClick={() => handleNavigation(item.href)}
                 >
-                  <item.icon className="h-5 w-5 flex-shrink-0" />
-                  <span>{item.label}</span>
+                  <Link href={item.href} prefetch>
+                    <item.icon className="h-5 w-5 flex-shrink-0" />
+                    <span>{item.label}</span>
+                  </Link>
                 </Button>
               ))}
           </>
@@ -491,6 +496,7 @@ export default function Sidebar() {
             .map((item) => (
               <Button
                 key={item.id}
+                asChild
                 variant={activeItem === item.id ? 'default' : 'ghost'}
                 className={cn(
                   'w-full justify-center p-0 h-10 w-10',
@@ -498,9 +504,10 @@ export default function Sidebar() {
                     ? 'bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary'
                     : 'text-sidebar-foreground hover:bg-sidebar-accent',
                 )}
-                onClick={() => handleNavigation(item.href)}
               >
-                <item.icon className="h-5 w-5 flex-shrink-0" />
+                <Link href={item.href} prefetch>
+                  <item.icon className="h-5 w-5 flex-shrink-0" />
+                </Link>
               </Button>
             ))}
       </nav>

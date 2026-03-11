@@ -516,6 +516,7 @@ model Invoice {
   markedAsPaidBy       String?
   viewCount            Int     @default(0)
   lastViewedAt        DateTime?
+  consecutiveNumber   Int?    // Número consecutivo por organización (cada rancho 1, 2, 3...)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 

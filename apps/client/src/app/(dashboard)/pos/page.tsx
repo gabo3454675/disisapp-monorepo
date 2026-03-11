@@ -49,6 +49,8 @@ interface CartItem {
 
 interface TicketSummary {
   invoiceId?: number | null;
+  /** Número consecutivo por organización (para mostrar en ticket) */
+  consecutiveNumber?: number | null;
   customerName: string;
   createdAt: string;
   items: Array<{ name: string; quantity: number; unitPrice: number }>;
@@ -59,7 +61,7 @@ interface TicketSummary {
 }
 
 export default function POSPage() {
-  const { selectedCompanyId } = useAuthStore();
+  const { selectedCompanyId, getCurrentOrganization } = useAuthStore();
   const { canManageCustomers } = usePermission();
   const rawRate = useExchangeRate();
   const tasaBcv = Number.isFinite(rawRate) && rawRate > 0 ? rawRate : 1;
@@ -277,7 +279,11 @@ export default function POSPage() {
         setTimeout(() => setSuccess(false), 8000);
       } else {
         const created = await invoiceService.create(invoiceData);
-        setLastTicket({ ...ticketBase, invoiceId: created.id });
+        setLastTicket({
+          ...ticketBase,
+          invoiceId: created.id,
+          consecutiveNumber: (created as { consecutiveNumber?: number }).consecutiveNumber ?? null,
+        });
         setCart([]);
         setSelectedCustomerId(null);
         setSuccess(true);
@@ -308,10 +314,21 @@ export default function POSPage() {
   const handlePrintTicket = () => {
     if (!lastTicket) return;
 
+    const org = getCurrentOrganization();
+    const headerName = org?.name ? `${org.name.toUpperCase()} - TICKET DE VENTA` : 'TICKET DE VENTA';
+    const rif =
+      org && 'taxId' in org && (org as any).taxId
+        ? String((org as any).taxId)
+        : undefined;
+
     const lines: string[] = [];
-    lines.push('MONDDY - TICKET DE VENTA');
-    if (lastTicket.invoiceId) {
-      lines.push(`Factura #${lastTicket.invoiceId}`);
+    lines.push(headerName);
+    if (rif) {
+      lines.push(`RIF: ${rif}`);
+    }
+    const facturaNum = lastTicket.consecutiveNumber ?? lastTicket.invoiceId;
+    if (facturaNum != null) {
+      lines.push(`Factura #${facturaNum}`);
     }
     lines.push(`Fecha: ${lastTicket.createdAt}`);
     lines.push(`Cliente: ${lastTicket.customerName}`);

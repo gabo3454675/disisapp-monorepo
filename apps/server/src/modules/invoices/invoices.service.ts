@@ -180,6 +180,10 @@ export class InvoicesService {
 
     const paymentStatus = isCredit ? PaymentStatus.pending_credit : PaymentStatus.paid;
 
+    // Número consecutivo por organización (cada rancho/empresa tiene su propia secuencia 1, 2, 3...)
+    const nextConsecutive =
+      (await this.prisma.invoice.count({ where: { organizationId } })) + 1;
+
     const mapToMetodo = (method: string): string => {
       const m = method.toUpperCase();
       if (m === 'CASH_USD' || m === 'CASH_BS') return 'EFECTIVO';
@@ -209,6 +213,7 @@ export class InvoicesService {
           notes: notes || null,
           publicToken: uuidv4(),
           tasaHistoricaId: tasa.id,
+          consecutiveNumber: nextConsecutive,
           items: { create: invoiceItemsData },
           paymentLines: {
             create: paymentLinesData.map((p) => ({
@@ -265,7 +270,7 @@ export class InvoicesService {
 
       await this.tasksService.create(
         {
-          title: `Cobro: Factura #${invoice.id} - ${customerName}`,
+          title: `Cobro: Factura #${nextConsecutive} - ${customerName}`,
           description: `Monto adeudado: $${Number(invoice.totalAmount).toFixed(2)}. Factura a crédito.`,
           assignedToId: sellerId,
           invoiceId: invoice.id,
@@ -526,7 +531,7 @@ export class InvoicesService {
         paymentMethod: invoice.paymentMethod,
         status: invoice.status,
       },
-      summary: `Factura #${id} eliminada. Total: $${Number(invoice.totalAmount).toFixed(2)}. Cliente: ${(invoice.customer as { name?: string })?.name ?? 'N/A'}.`,
+      summary: `Factura #${(invoice as { consecutiveNumber?: number }).consecutiveNumber ?? id} eliminada. Total: $${Number(invoice.totalAmount).toFixed(2)}. Cliente: ${(invoice.customer as { name?: string })?.name ?? 'N/A'}.`,
     });
 
     await this.prisma.$transaction([
@@ -769,8 +774,9 @@ export class InvoicesService {
         } catch {
           dateStr = new Date(invoice.createdAt).toISOString().slice(0, 10);
         }
+        const displayNumber = (invoice as { consecutiveNumber?: number }).consecutiveNumber ?? invoice.id;
         doc.fontSize(10).fillColor(text)
-          .text(`#${invoice.id}`, 500, 72, { align: 'right' })
+          .text(`#${displayNumber}`, 500, 72, { align: 'right' })
           .text(dateStr, 500, 85, { align: 'right' });
 
         // Separador
