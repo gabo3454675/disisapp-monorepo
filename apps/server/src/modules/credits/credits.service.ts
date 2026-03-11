@@ -132,24 +132,22 @@ export class CreditsService {
     }
 
     const newBalance = Number(credit.currentBalance) + amountUsd;
-    const transaction = await this.prisma.$transaction([
-      this.prisma.customerCredit.update({
-        where: { id: credit.id },
-        data: { currentBalance: newBalance },
-      }),
-      this.prisma.creditTransaction.create({
-        data: {
-          creditId: credit.id,
-          invoiceId,
-          type: CreditTransactionType.CHARGE,
-          amountUsd,
-          amountBs,
-          exchangeRate,
-          description: `Venta a crédito - Factura #${invoiceId}`,
-        },
-      }),
-    ]);
-    return transaction[1];
+    await this.prisma.customerCredit.update({
+      where: { id: credit.id },
+      data: { currentBalance: newBalance },
+    });
+
+    return this.prisma.creditTransaction.create({
+      data: {
+        creditId: credit.id,
+        invoiceId,
+        type: CreditTransactionType.CHARGE,
+        amountUsd,
+        amountBs,
+        exchangeRate,
+        description: `Venta a crédito - Factura #${invoiceId}`,
+      },
+    });
   }
 
   /**
@@ -179,27 +177,26 @@ export class CreditsService {
     const description =
       dto.description ?? (dto.invoiceId ? `Abono (Factura #${dto.invoiceId})` : 'Abono');
 
-    const [_, created] = await this.prisma.$transaction([
-      this.prisma.customerCredit.update({
-        where: { id: creditId },
-        data: { currentBalance: newBalance },
-      }),
-      this.prisma.creditTransaction.create({
-        data: {
-          creditId,
-          invoiceId: dto.invoiceId ?? undefined,
-          type: CreditTransactionType.PAYMENT,
-          amountUsd: dto.amountUsd,
-          amountBs: dto.amountBs,
-          exchangeRate: dto.exchangeRate,
-          description,
-        },
-        include: {
-          credit: { include: { customer: true } },
-          invoice: true,
-        },
-      }),
-    ]);
+    await this.prisma.customerCredit.update({
+      where: { id: creditId },
+      data: { currentBalance: newBalance },
+    });
+
+    const created = await this.prisma.creditTransaction.create({
+      data: {
+        creditId,
+        invoiceId: dto.invoiceId ?? undefined,
+        type: CreditTransactionType.PAYMENT,
+        amountUsd: dto.amountUsd,
+        amountBs: dto.amountBs,
+        exchangeRate: dto.exchangeRate,
+        description,
+      },
+      include: {
+        credit: { include: { customer: true } },
+        invoice: true,
+      },
+    });
 
     if (dto.invoiceId) {
       await this.tryCloseCollectionTaskForInvoice(dto.invoiceId, organizationId);
