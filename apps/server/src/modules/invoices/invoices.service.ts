@@ -190,7 +190,8 @@ export class InvoicesService {
     };
 
     // Ejecutamos actualización de stock e inserción de factura en una sola transacción "batch"
-    const [_, invoice] = await this.prisma.$transaction([
+    // El array devuelve [resultadoUpdate1, ..., resultadoUpdateN, facturaCreada]; la factura es el último elemento
+    const results = await this.prisma.$transaction([
       ...stockUpdates,
       this.prisma.invoice.create({
         data: {
@@ -234,6 +235,11 @@ export class InvoicesService {
         },
       }),
     ]);
+    const invoice = results[results.length - 1] as {
+      id: number;
+      totalAmount: unknown;
+      customer: { name?: string | null } | null;
+    };
 
     if (isCredit && customerId && invoice) {
       const org = await this.prisma.organization.findUnique({
