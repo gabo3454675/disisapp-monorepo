@@ -63,20 +63,34 @@ export default function CreditsPage() {
   const [limitDialogOpen, setLimitDialogOpen] = useState(false);
   const [newLimit, setNewLimit] = useState('');
   const [savingLimit, setSavingLimit] = useState(false);
+  const [detailTab, setDetailTab] = useState<'resumen' | 'movimientos'>('resumen');
 
   const fetchCredits = useCallback(async () => {
-    if (!selectedCompanyId) return;
+    // El backend ya filtra por organización vía x-tenant-id;
+    // no dependamos estrictamente de selectedCompanyId para evitar quedar "congelados"
     try {
       setLoading(true);
       const res = await apiClient.get<CustomerCredit[]>('/credits');
-      setCredits(res.data);
-    } catch (e) {
-      console.error(e);
-      toast.error('Error al cargar cuentas por cobrar');
+      const list = Array.isArray(res.data) ? res.data : [];
+      setCredits(list);
+
+      // Si hay un crédito seleccionado pero ya no existe en la lista (cambió la cartera),
+      // evitar estados inconsistentes reseteando la selección.
+      if (selectedCredit && !list.some((c) => c.id === selectedCredit.id)) {
+        setSelectedCredit(null);
+        setTransactions([]);
+      }
+    } catch (e: any) {
+      console.error('Error fetching credits:', e);
+      const msg =
+        e?.response?.data?.message ||
+        e?.message ||
+        'Error al cargar cuentas por cobrar';
+      toast.error(typeof msg === 'string' ? msg : 'Error al cargar cuentas por cobrar');
     } finally {
       setLoading(false);
     }
-  }, [selectedCompanyId]);
+  }, [selectedCredit]);
 
   useEffect(() => {
     fetchCredits();
@@ -95,9 +109,10 @@ export default function CreditsPage() {
       .finally(() => setLoadingTx(false));
   }, [selectedCredit]);
 
-  const filteredCredits = credits.filter((c) =>
-    c.customer.name.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredCredits = credits.filter((c) => {
+    const name = c.customer?.name ?? '';
+    return name.toLowerCase().includes(search.toLowerCase());
+  });
 
   if (!canManageCustomers) {
     return (
@@ -115,6 +130,11 @@ export default function CreditsPage() {
 
   const handleOpenPayment = () => {
     if (!selectedCredit) return;
+    if (!selectedCredit.customerId || Number.isNaN(Number(selectedCredit.customerId))) {
+      toast.error('El cliente seleccionado no es válido. Vuelva a seleccionarlo desde la lista.');
+      setSelectedCredit(null);
+      return;
+    }
     const balance = Number(selectedCredit.currentBalance);
     setPaymentAmountUsd('');
     setPaymentAmountBs('');
@@ -251,6 +271,24 @@ export default function CreditsPage() {
                 ? `${selectedCredit.customer.name} · Saldo: ${formatForDisplay(Number(selectedCredit.currentBalance))}`
                 : 'Seleccione un cliente'}
             </CardDescription>
+            <div className="mt-3 flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={detailTab === 'resumen' ? 'default' : 'outline'}
+                onClick={() => setDetailTab('resumen')}
+              >
+                Resumen
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={detailTab === 'movimientos' ? 'default' : 'outline'}
+                onClick={() => setDetailTab('movimientos')}
+              >
+                Movimientos
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             {!selectedCredit ? (
@@ -259,67 +297,111 @@ export default function CreditsPage() {
               </p>
             ) : (
               <>
-                <div className="flex flex-wrap gap-2">
-                  <Button onClick={handleOpenPayment} disabled={Number(selectedCredit.currentBalance) <= 0}>
-                    <DollarSign className="mr-2 h-4 w-4" />
-                    Registrar abono
-                  </Button>
-                  {canEditCreditLimit && (
-                    <Button variant="outline" onClick={() => { setNewLimit(String(selectedCredit.limitAmount)); setLimitDialogOpen(true); }}>
-                      Cambiar límite
-                    </Button>
-                  )}
-                </div>
-                <div>
-                  <h4 className="font-medium mb-2">Historial de movimientos</h4>
-                  {loadingTx ? (
-                    <Loader2 className="h-6 w-6 animate-spin" />
-                  ) : transactions.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Sin movimientos</p>
-                  ) : (
-                    <ul className="space-y-2 max-h-[240px] overflow-y-auto">
-                      {transactions.map((tx) => (
-                        <li
-                          key={tx.id}
-                          className="flex justify-between items-center text-sm py-2 border-b border-border last:border-0"
+                {detailTab === 'resumen' && (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <Label>Saldo deudor</Label>
+                        <p className="text-2xl font-bold">
+                          {formatForDisplay(Number(selectedCredit.currentBalance))}
+                        </p>
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Límite de crédito</Label>
+                        <p className="text-lg font-semibold">
+                          {formatForDisplay(Number(selectedCredit.limitAmount))}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Días de crédito: {selectedCredit.creditDueDays || 0}
+                        </p>
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Estado</Label>
+                        <p className="inline-flex items-center gap-2 text-sm">
+                          <span
+                            className={`h-2 w-2 rounded-full ${
+                              selectedCredit.status === 'ACTIVE'
+                                ? 'bg-emerald-500'
+                                : 'bg-red-500'
+                            }`}
+                          />
+                          {selectedCredit.status === 'ACTIVE' ? 'Activo' : selectedCredit.status}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <Button onClick={handleOpenPayment} disabled={Number(selectedCredit.currentBalance) <= 0}>
+                        <DollarSign className="mr-2 h-4 w-4" />
+                        Registrar abono
+                      </Button>
+                      {canEditCreditLimit && (
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setNewLimit(String(selectedCredit.limitAmount));
+                            setLimitDialogOpen(true);
+                          }}
                         >
-                          <div>
-                            <span className={tx.type === 'CHARGE' ? 'text-amber-600 dark:text-amber-400' : 'text-green-600 dark:text-green-400'}>
-                              {tx.type === 'CHARGE' ? 'Cargo' : 'Abono'}
-                            </span>
-                            {tx.description && (
-                              <span className="text-muted-foreground ml-2">{tx.description}</span>
-                            )}
-                            <div className="text-xs text-muted-foreground">{formatDate(tx.createdAt)}</div>
-                          </div>
-                          <div className="text-right">
-                            <span className="font-medium">{formatForDisplay(Number(tx.amountUsd))}</span>
-                            {tx.type === 'PAYMENT' && (
-                              <Button
-                                variant="link"
-                                size="sm"
-                                className="h-auto p-0 text-xs"
-                                onClick={async () => {
-                                  try {
-                                    const r = await apiClient.get(`/credits/transactions/${tx.id}/receipt-pdf`, { responseType: 'blob' });
-                                    const blob = new Blob([r.data], { type: 'application/pdf' });
-                                    const url = window.URL.createObjectURL(blob);
-                                    window.open(url, '_blank');
-                                    window.URL.revokeObjectURL(url);
-                                  } catch {
-                                    toast.error('Error al descargar recibo');
-                                  }
-                                }}
-                              >
-                                Recibo PDF
-                              </Button>
-                            )}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
+                          Cambiar límite
+                        </Button>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {detailTab === 'movimientos' && (
+                  <div>
+                    <h4 className="font-medium mb-2">Historial de movimientos</h4>
+                    {loadingTx ? (
+                      <Loader2 className="h-6 w-6 animate-spin" />
+                    ) : transactions.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Sin movimientos</p>
+                    ) : (
+                      <ul className="space-y-2 max-h-[240px] overflow-y-auto">
+                        {transactions.map((tx) => (
+                          <li
+                            key={tx.id}
+                            className="flex justify-between items-center text-sm py-2 border-b border-border last:border-0"
+                          >
+                            <div>
+                              <span className={tx.type === 'CHARGE' ? 'text-amber-600 dark:text-amber-400' : 'text-green-600 dark:text-green-400'}>
+                                {tx.type === 'CHARGE' ? 'Cargo' : 'Abono'}
+                              </span>
+                              {tx.description && (
+                                <span className="text-muted-foreground ml-2">{tx.description}</span>
+                              )}
+                              <div className="text-xs text-muted-foreground">{formatDate(tx.createdAt)}</div>
+                            </div>
+                            <div className="text-right">
+                              <span className="font-medium">{formatForDisplay(Number(tx.amountUsd))}</span>
+                              {tx.type === 'PAYMENT' && (
+                                <Button
+                                  variant="link"
+                                  size="sm"
+                                  className="h-auto p-0 text-xs"
+                                  onClick={async () => {
+                                    try {
+                                      const r = await apiClient.get(`/credits/transactions/${tx.id}/receipt-pdf`, { responseType: 'blob' });
+                                      const blob = new Blob([r.data], { type: 'application/pdf' });
+                                      const url = window.URL.createObjectURL(blob);
+                                      window.open(url, '_blank');
+                                      window.URL.revokeObjectURL(url);
+                                    } catch {
+                                      toast.error('Error al descargar recibo');
+                                    }
+                                  }}
+                                >
+                                  Recibo PDF
+                                </Button>
+                              )}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
               </>
             )}
           </CardContent>

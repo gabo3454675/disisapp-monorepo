@@ -59,6 +59,7 @@ export default function HistoryPage() {
   const [loading, setLoading] = useState(false);
   const [detailInvoiceId, setDetailInvoiceId] = useState<number | null>(null);
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const activeOrgId = selectedOrganizationId || selectedCompanyId;
 
@@ -175,69 +176,95 @@ export default function HistoryPage() {
         </div>
 
         {/* Filtros: rango de fechas y empresa */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between md:justify-start md:gap-4">
+            <span className="hidden md:inline-flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <Calendar className="h-4 w-4" />
               Filtros
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col sm:flex-row flex-wrap gap-4">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="startDate">Desde</Label>
-              <Input
-                id="startDate"
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full sm:w-auto"
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="endDate">Hasta</Label>
-              <Input
-                id="endDate"
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-full sm:w-auto"
-              />
-            </div>
-            {(organizations.length > 1 || isSuperAdmin) && (
-              <div className="flex flex-col gap-2 min-w-[200px]">
-                <Label className="flex items-center gap-1.5">
-                  <Building2 className="h-4 w-4" />
-                  Empresa
-                </Label>
-                <Select
-                  value={filterOrgId != null ? String(filterOrgId) : (activeOrgId != null ? String(activeOrgId) : '')}
-                  onValueChange={(v) => {
-                    const id = v ? parseInt(v, 10) : null;
-                    setFilterOrgId(id);
-                    if (!isSuperAdmin && id != null) selectOrganization(id);
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Todas / actual" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(organizations as Array<{ id: number; name?: string; nombre?: string }>).map((org) => (
-                      <SelectItem key={org.id} value={String(org.id)}>
-                        {org.name ?? org.nombre ?? `Org ${org.id}`}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            <div className="flex items-end">
-              <Button onClick={fetchHistory} disabled={loading}>
-                {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Buscar
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="md:hidden"
+              onClick={() => setFiltersOpen((prev) => !prev)}
+            >
+              <Calendar className="h-4 w-4 mr-2" />
+              {filtersOpen ? 'Ocultar filtros' : 'Mostrar filtros'}
+            </Button>
+          </div>
+          {(filtersOpen || typeof window === 'undefined' || window.innerWidth >= 768) && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                  <Calendar className="h-4 w-4" />
+                  Filtros
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col sm:flex-row flex-wrap gap-4">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="startDate">Desde</Label>
+                  <Input
+                    id="startDate"
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="w-full sm:w-auto"
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="endDate">Hasta</Label>
+                  <Input
+                    id="endDate"
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="w-full sm:w-auto"
+                  />
+                </div>
+                {(organizations.length > 1 || isSuperAdmin) && (
+                  <div className="flex flex-col gap-2 min-w-[200px]">
+                    <Label className="flex items-center gap-1.5">
+                      <Building2 className="h-4 w-4" />
+                      Empresa
+                    </Label>
+                    <Select
+                      value={
+                        filterOrgId != null
+                          ? String(filterOrgId)
+                          : activeOrgId != null
+                            ? String(activeOrgId)
+                            : ''
+                      }
+                      onValueChange={(v) => {
+                        const id = v ? parseInt(v, 10) : null;
+                        setFilterOrgId(id);
+                        if (!isSuperAdmin && id != null) selectOrganization(id);
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Todas / actual" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(organizations as Array<{ id: number; name?: string; nombre?: string }>).map((org) => (
+                          <SelectItem key={org.id} value={String(org.id)}>
+                            {org.name ?? org.nombre ?? `Org ${org.id}`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                <div className="flex items-end">
+                  <Button onClick={fetchHistory} disabled={loading}>
+                    {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                    Buscar
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
 
         {/* Tarjetas de resumen del periodo (solo cobro real, sin IVA/IGTF) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

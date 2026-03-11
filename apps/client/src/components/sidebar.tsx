@@ -371,27 +371,138 @@ export default function Sidebar() {
 
       {/* Navigation - Scrollable */}
       <nav className="flex-1 p-4 space-y-2 overflow-y-auto overflow-x-hidden min-h-0">
-        {navigationItems
-          .filter((item) =>
-            canShowNavItem(item as NavItem, permissions, { canSeeInspections }),
-          )
-          .map((item) => (
-            <Button
-              key={item.id}
-              variant={activeItem === item.id ? 'default' : 'ghost'}
-              className={cn(
-                'w-full justify-start gap-3',
-                activeItem === item.id
-                  ? 'bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary'
-                  : 'text-sidebar-foreground hover:bg-sidebar-accent',
-                isCollapsed && 'justify-center p-0 h-10 w-10'
-              )}
-              onClick={() => handleNavigation(item.href)}
-            >
-              <item.icon className="h-5 w-5 flex-shrink-0" />
-              {!isCollapsed && <span>{item.label}</span>}
-            </Button>
-          ))}
+        {!isCollapsed && (
+          <>
+            <p className="px-2 text-[11px] font-semibold uppercase tracking-wide text-sidebar-foreground/60">
+              Ventas y Caja
+            </p>
+            {navigationItems
+              .filter((item) =>
+                ['dashboard', 'pos', 'invoices', 'history', 'cierre-caja'].includes(item.id),
+              )
+              .filter((item) =>
+                canShowNavItem(item as NavItem, permissions, { canSeeInspections }),
+              )
+              .map((item) => (
+                <Button
+                  key={item.id}
+                  variant={activeItem === item.id ? 'default' : 'ghost'}
+                  className={cn(
+                    'w-full justify-start gap-3',
+                    activeItem === item.id
+                      ? 'bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary'
+                      : 'text-sidebar-foreground hover:bg-sidebar-accent',
+                  )}
+                  onClick={() => handleNavigation(item.href)}
+                >
+                  <item.icon className="h-5 w-5 flex-shrink-0" />
+                  <span>{item.label}</span>
+                </Button>
+              ))}
+
+            <p className="px-2 mt-4 text-[11px] font-semibold uppercase tracking-wide text-sidebar-foreground/60">
+              Inventario
+            </p>
+            {navigationItems
+              .filter((item) =>
+                ['products', 'movements', 'alertas-stock', 'autoconsumo'].includes(item.id),
+              )
+              .filter((item) =>
+                canShowNavItem(item as NavItem, permissions, { canSeeInspections }),
+              )
+              .map((item) => (
+                <Button
+                  key={item.id}
+                  variant={activeItem === item.id ? 'default' : 'ghost'}
+                  className={cn(
+                    'w-full justify-start gap-3',
+                    activeItem === item.id
+                      ? 'bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary'
+                      : 'text-sidebar-foreground hover:bg-sidebar-accent',
+                  )}
+                  onClick={() => handleNavigation(item.href)}
+                >
+                  <item.icon className="h-5 w-5 flex-shrink-0" />
+                  <span>{item.label}</span>
+                </Button>
+              ))}
+
+            <p className="px-2 mt-4 text-[11px] font-semibold uppercase tracking-wide text-sidebar-foreground/60">
+              Clientes y Finanzas
+            </p>
+            {navigationItems
+              .filter((item) =>
+                ['customers', 'credits', 'expenses'].includes(item.id),
+              )
+              .filter((item) =>
+                canShowNavItem(item as NavItem, permissions, { canSeeInspections }),
+              )
+              .map((item) => (
+                <Button
+                  key={item.id}
+                  variant={activeItem === item.id ? 'default' : 'ghost'}
+                  className={cn(
+                    'w-full justify-start gap-3',
+                    activeItem === item.id
+                      ? 'bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary'
+                      : 'text-sidebar-foreground hover:bg-sidebar-accent',
+                  )}
+                  onClick={() => handleNavigation(item.href)}
+                >
+                  <item.icon className="h-5 w-5 flex-shrink-0" />
+                  <span>{item.label}</span>
+                </Button>
+              ))}
+
+            <p className="px-2 mt-4 text-[11px] font-semibold uppercase tracking-wide text-sidebar-foreground/60">
+              Configuración
+            </p>
+            {navigationItems
+              .filter((item) =>
+                ['tasas', 'inspections', 'settings'].includes(item.id),
+              )
+              .filter((item) =>
+                canShowNavItem(item as NavItem, permissions, { canSeeInspections }),
+              )
+              .map((item) => (
+                <Button
+                  key={item.id}
+                  variant={activeItem === item.id ? 'default' : 'ghost'}
+                  className={cn(
+                    'w-full justify-start gap-3',
+                    activeItem === item.id
+                      ? 'bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary'
+                      : 'text-sidebar-foreground hover:bg-sidebar-accent',
+                  )}
+                  onClick={() => handleNavigation(item.href)}
+                >
+                  <item.icon className="h-5 w-5 flex-shrink-0" />
+                  <span>{item.label}</span>
+                </Button>
+              ))}
+          </>
+        )}
+
+        {isCollapsed &&
+          navigationItems
+            .filter((item) =>
+              canShowNavItem(item as NavItem, permissions, { canSeeInspections }),
+            )
+            .map((item) => (
+              <Button
+                key={item.id}
+                variant={activeItem === item.id ? 'default' : 'ghost'}
+                className={cn(
+                  'w-full justify-center p-0 h-10 w-10',
+                  activeItem === item.id
+                    ? 'bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary'
+                    : 'text-sidebar-foreground hover:bg-sidebar-accent',
+                )}
+                onClick={() => handleNavigation(item.href)}
+              >
+                <item.icon className="h-5 w-5 flex-shrink-0" />
+              </Button>
+            ))}
       </nav>
 
       {/* User Section - Fixed at bottom */}

@@ -47,6 +47,17 @@ interface CartItem {
   quantity: number;
 }
 
+interface TicketSummary {
+  invoiceId?: number | null;
+  customerName: string;
+  createdAt: string;
+  items: Array<{ name: string; quantity: number; unitPrice: number }>;
+  totalUsd: number;
+  totalBs: number;
+  currencyMode: CurrencyMode;
+  paymentMethod: PaymentMethod;
+}
+
 export default function POSPage() {
   const { selectedCompanyId } = useAuthStore();
   const { canManageCustomers } = usePermission();
@@ -62,6 +73,7 @@ export default function POSPage() {
   const [processing, setProcessing] = useState(false);
   const [success, setSuccess] = useState(false);
   const [lastInvoiceId, setLastInvoiceId] = useState<number | null>(null);
+  const [lastTicket, setLastTicket] = useState<TicketSummary | null>(null);
   const [currencyMode, setCurrencyMode] = useState<CurrencyMode>('USD');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH_USD');
   const [customerCredit, setCustomerCredit] = useState<{
@@ -228,6 +240,26 @@ export default function POSPage() {
     const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
 
     try {
+      const customer =
+        selectedCustomerId != null
+          ? customers.find((c) => c.id === selectedCustomerId) ?? null
+          : null;
+
+      const ticketBase: TicketSummary = {
+        invoiceId: null,
+        customerName: customer?.name ?? 'Cliente General',
+        createdAt: new Date().toLocaleString('es-VE'),
+        items: cart.map((item) => ({
+          name: item.product.name,
+          quantity: item.quantity,
+          unitPrice: Number(item.product.salePrice),
+        })),
+        totalUsd: amountUsd,
+        totalBs: amountBs,
+        currencyMode,
+        paymentMethod,
+      };
+
       if (isOffline) {
         // Modo offline: guardar en IndexedDB (Dexie) para sincronizar al volver online
         await db.pendingInvoices.add({
@@ -235,6 +267,7 @@ export default function POSPage() {
           createdAt: Date.now(),
           synced: false,
         });
+        setLastTicket(ticketBase);
         setCart([]);
         setSelectedCustomerId(null);
         setSuccess(true);
@@ -244,6 +277,7 @@ export default function POSPage() {
         setTimeout(() => setSuccess(false), 8000);
       } else {
         const created = await invoiceService.create(invoiceData);
+        setLastTicket({ ...ticketBase, invoiceId: created.id });
         setCart([]);
         setSelectedCustomerId(null);
         setSuccess(true);
@@ -269,6 +303,47 @@ export default function POSPage() {
       currency: mode === 'BS' ? 'VES' : 'USD',
       minimumFractionDigits: 2,
     }).format(amount);
+  };
+
+  const handlePrintTicket = () => {
+    if (!lastTicket) return;
+
+    const lines: string[] = [];
+    lines.push('MONDDY - TICKET DE VENTA');
+    if (lastTicket.invoiceId) {
+      lines.push(`Factura #${lastTicket.invoiceId}`);
+    }
+    lines.push(`Fecha: ${lastTicket.createdAt}`);
+    lines.push(`Cliente: ${lastTicket.customerName}`);
+    lines.push('--------------------------------');
+    lastTicket.items.forEach((item) => {
+      const lineTotal = round2(item.unitPrice * item.quantity);
+      lines.push(
+        `${item.quantity} x ${item.name}`.slice(0, 40),
+      );
+      lines.push(
+        `   ${formatCurrency(item.unitPrice, 'USD').padEnd(12)}  ${formatCurrency(
+          lineTotal,
+          'USD',
+        )}`,
+      );
+    });
+    lines.push('--------------------------------');
+    lines.push(`TOTAL USD: ${formatCurrency(lastTicket.totalUsd, 'USD')}`);
+    lines.push(`TOTAL Bs:  ${formatCurrency(lastTicket.totalBs, 'BS')}`);
+    lines.push('');
+    lines.push(`Pago: ${lastTicket.paymentMethod}`);
+    lines.push('');
+    lines.push('Gracias por su compra');
+
+    const ticketText = lines.join('\n');
+    const w = window.open('', '_blank');
+    if (w) {
+      w.document.write(
+        `<pre style="font-family: monospace; white-space: pre-wrap; padding: 8px; font-size: 12px;">${ticketText}</pre>`,
+      );
+      w.document.close();
+    }
   };
 
   if (!canManageCustomers) {
@@ -314,47 +389,60 @@ export default function POSPage() {
       {success && (
         <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
-              <span className="text-green-800 dark:text-green-200 font-medium">
-                ¡Venta procesada exitosamente!
-              </span>
+            <div className="flex flex-col gap-1 md:flex-row md:items-center md:gap-2">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+                <span className="text-green-800 dark:text-green-200 font-medium">
+                  ¡Venta procesada exitosamente!
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-2 mt-2 md:mt-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handlePrintTicket}
+                  disabled={!lastTicket}
+                  className="bg-white dark:bg-gray-800"
+                >
+                  <Printer className="mr-2 h-4 w-4" />
+                  Imprimir Ticket
+                </Button>
+                {lastInvoiceId && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        const response = await invoiceService.getPdf(lastInvoiceId);
+                        const contentType = response.headers?.['content-type'] ?? '';
+                        if (contentType.includes('application/json')) {
+                          const text = await (response.data as Blob).text();
+                          const data = JSON.parse(text);
+                          alert(data?.message ?? 'Error al descargar la factura');
+                          return;
+                        }
+                        const blob = new Blob([response.data], { type: 'application/pdf' });
+                        const url = window.URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.target = '_blank';
+                        link.download = `factura-${lastInvoiceId}.pdf`;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        window.URL.revokeObjectURL(url);
+                      } catch (error: any) {
+                        console.error('Error downloading PDF:', error);
+                        alert(error.response?.data?.message ?? 'Error al descargar la factura');
+                      }
+                    }}
+                  >
+                    <Printer className="mr-2 h-4 w-4" />
+                    Imprimir Factura
+                  </Button>
+                )}
+              </div>
             </div>
-            {lastInvoiceId && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={async () => {
-                  try {
-                    const response = await invoiceService.getPdf(lastInvoiceId);
-                    const contentType = response.headers?.['content-type'] ?? '';
-                    if (contentType.includes('application/json')) {
-                      const text = await (response.data as Blob).text();
-                      const data = JSON.parse(text);
-                      alert(data?.message ?? 'Error al descargar la factura');
-                      return;
-                    }
-                    const blob = new Blob([response.data], { type: 'application/pdf' });
-                    const url = window.URL.createObjectURL(blob);
-                    const link = document.createElement('a');
-                    link.href = url;
-                    link.target = '_blank';
-                    link.download = `factura-${lastInvoiceId}.pdf`;
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    window.URL.revokeObjectURL(url);
-                  } catch (error: any) {
-                    console.error('Error downloading PDF:', error);
-                    alert(error.response?.data?.message ?? 'Error al descargar la factura');
-                  }
-                }}
-                className="bg-white dark:bg-gray-800"
-              >
-                <Printer className="mr-2 h-4 w-4" />
-                Imprimir Factura
-              </Button>
-            )}
           </div>
         </div>
       )}
