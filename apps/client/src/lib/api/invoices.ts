@@ -1,5 +1,5 @@
 import type { AxiosResponse } from 'axios';
-import type { Invoice, InvoiceItem, Customer } from '@billing-system/shared';
+import type { Invoice, InvoiceItem, Customer } from '@/types/shared-types';
 import { apiClient } from './client';
 
 /** Respuesta del endpoint GET /invoices/history. id explícito para compatibilidad con build. */

@@ -1,5 +1,4 @@
-/** Paquete workspace: @billing-system/shared (no abilling-system) */
-import type { LoginResponse } from '@billing-system/shared';
+import type { LoginResponse } from '@/types/shared-types';
 import { apiClient } from './client';
 
 export interface LoginPayload {
