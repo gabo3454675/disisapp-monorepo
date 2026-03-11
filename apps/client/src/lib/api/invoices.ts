@@ -2,8 +2,9 @@ import type { AxiosResponse } from 'axios';
 import type { Invoice, InvoiceItem, Customer } from '@billing-system/shared';
 import { apiClient } from './client';
 
-/** Respuesta del endpoint GET /invoices/history */
-export interface HistoryInvoice extends Invoice {
+/** Respuesta del endpoint GET /invoices/history. id explícito para compatibilidad con build. */
+export interface HistoryInvoice extends Omit<Invoice, 'id'> {
+  id: number;
   totalAmount: number | string;
   paymentMethod?: string;
   customer: Customer | null;
