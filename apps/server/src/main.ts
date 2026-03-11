@@ -27,11 +27,12 @@ async function bootstrap() {
   // En desarrollo, acepta desde localhost
   const allowedOrigins: string[] = [];
   
-  // Dominios de producción siempre permitidos
+  // Dominios de producción siempre permitidos (incl. variantes Render)
   const productionDomains = [
     'https://disisapp.com',
     'https://www.disisapp.com',
     'https://disisapp-monorepo-frontend.onrender.com',
+    'https://disis-monorepo-frontend-glkl.onrender.com',
   ];
   
   if (nodeEnv === 'production') {
@@ -59,12 +60,13 @@ async function bootstrap() {
       'http://localhost:3002',
       'http://localhost:3003',
       'https://disisapp-monorepo-frontend.onrender.com',
+      'https://disis-monorepo-frontend-glkl.onrender.com',
     );
     // También permitir dominios de producción en desarrollo para testing
     allowedOrigins.push(...productionDomains);
   }
 
-  console.log('[CORS] NODE_ENV=', nodeEnv, 'allowedOrigins=', allowedOrigins.length, '(hostname check for disisapp-monorepo-frontend*.onrender.com enabled)');
+  console.log('[CORS] NODE_ENV=', nodeEnv, 'allowedOrigins=', allowedOrigins.length, '(hostname check for disis*-monorepo-frontend*.onrender.com enabled)');
 
   app.enableCors({
     origin: (origin, callback) => {
@@ -85,8 +87,8 @@ async function bootstrap() {
         const url = new URL(origin);
         const h = url.hostname;
         isAllowedByHost =
-          h === 'disisapp-monorepo-frontend.onrender.com' ||
-          (h.endsWith('.onrender.com') && h.startsWith('disisapp-monorepo-frontend'));
+          h.endsWith('.onrender.com') &&
+          (h.startsWith('disisapp-monorepo-frontend') || h.startsWith('disis-monorepo-frontend'));
       } catch {
         // ignore invalid URL
       }
