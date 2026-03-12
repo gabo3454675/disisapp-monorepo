@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   BarChart,
@@ -216,6 +216,8 @@ export default function DashboardPage() {
 
   const canSeeCreatedByMe = isSuperAdmin || isAdmin || isManager;
   const { formatForDisplay, displayCurrency } = useDisplayCurrency();
+  const selectedIdRef = useRef<number | null>(selectedId);
+  selectedIdRef.current = selectedId;
 
   const ventasMesHealth = useMemo(() => {
     const value = health.totalVentasMes;
@@ -249,32 +251,45 @@ export default function DashboardPage() {
       return;
     }
 
+    const idAtStart = selectedId;
     try {
       setLoading(true);
       setError(null);
       const response = await apiClient.get<DashboardSummary>('/dashboard/summary');
-      setSummary(response.data);
+      if (selectedIdRef.current === idAtStart) {
+        setSummary(response.data);
+      }
     } catch (err: any) {
-      console.error('Error fetching dashboard summary:', err);
-      const errorMessage = err.response?.data?.message || err.message || 'Error al cargar los datos del dashboard';
-      setError(errorMessage);
-      // Siempre establecer datos por defecto para que haya contenido visible
-      setSummary(DEFAULT_SUMMARY);
+      if (selectedIdRef.current === idAtStart) {
+        console.error('Error fetching dashboard summary:', err);
+        const errorMessage = err.response?.data?.message || err.message || 'Error al cargar los datos del dashboard';
+        setError(errorMessage);
+        setSummary(DEFAULT_SUMMARY);
+      }
     } finally {
-      setLoading(false);
+      if (selectedIdRef.current === idAtStart) {
+        setLoading(false);
+      }
     }
   }, [selectedId]);
 
   const fetchDashboardHealth = useCallback(async () => {
     if (!selectedId) return;
+    const idAtStart = selectedId;
     try {
       setLoadingHealth(true);
       const res = await apiClient.get<DashboardHealth>('/dashboard/health');
-      setHealth(res.data);
+      if (selectedIdRef.current === idAtStart) {
+        setHealth(res.data);
+      }
     } catch {
-      setHealth(DEFAULT_HEALTH);
+      if (selectedIdRef.current === idAtStart) {
+        setHealth(DEFAULT_HEALTH);
+      }
     } finally {
-      setLoadingHealth(false);
+      if (selectedIdRef.current === idAtStart) {
+        setLoadingHealth(false);
+      }
     }
   }, [selectedId]);
 
@@ -327,6 +342,20 @@ export default function DashboardPage() {
     }
   }, [mounted, _hasHydrated, isAuthenticated, router]);
 
+  // Al cambiar de organización: resetear datos mostrados y cargar los de la nueva org
+  useEffect(() => {
+    if (!selectedId || !mounted || !_hasHydrated) return;
+    setSummary(DEFAULT_SUMMARY);
+    setHealth(DEFAULT_HEALTH);
+    setDiagnosis(DEFAULT_DIAGNOSIS);
+    setStrategy(DEFAULT_STRATEGY);
+    setError(null);
+    setLoading(true);
+    setLoadingHealth(true);
+    setLoadingDiagnosis(true);
+    setLoadingStrategy(true);
+  }, [selectedId]);
+
   useEffect(() => {
     // Solo intentar cargar datos después de que todo esté hidratado
     if (mounted && _hasHydrated && isAuthenticated) {
@@ -342,14 +371,21 @@ export default function DashboardPage() {
 
   const fetchDashboardDiagnosis = useCallback(async () => {
     if (!selectedId) return;
+    const idAtStart = selectedId;
     try {
       setLoadingDiagnosis(true);
       const res = await apiClient.get<DashboardDiagnosis>('/dashboard/diagnosis');
-      setDiagnosis(res.data);
+      if (selectedIdRef.current === idAtStart) {
+        setDiagnosis(res.data);
+      }
     } catch {
-      setDiagnosis(DEFAULT_DIAGNOSIS);
+      if (selectedIdRef.current === idAtStart) {
+        setDiagnosis(DEFAULT_DIAGNOSIS);
+      }
     } finally {
-      setLoadingDiagnosis(false);
+      if (selectedIdRef.current === idAtStart) {
+        setLoadingDiagnosis(false);
+      }
     }
   }, [selectedId]);
 
@@ -361,14 +397,21 @@ export default function DashboardPage() {
 
   const fetchDashboardStrategy = useCallback(async () => {
     if (!selectedId) return;
+    const idAtStart = selectedId;
     try {
       setLoadingStrategy(true);
       const res = await apiClient.get<DashboardStrategy>('/dashboard/strategy');
-      setStrategy(res.data);
+      if (selectedIdRef.current === idAtStart) {
+        setStrategy(res.data);
+      }
     } catch {
-      setStrategy(DEFAULT_STRATEGY);
+      if (selectedIdRef.current === idAtStart) {
+        setStrategy(DEFAULT_STRATEGY);
+      }
     } finally {
-      setLoadingStrategy(false);
+      if (selectedIdRef.current === idAtStart) {
+        setLoadingStrategy(false);
+      }
     }
   }, [selectedId]);
 
@@ -466,9 +509,9 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      {/* Contenido del dashboard - SIEMPRE se muestra si no está cargando */}
+      {/* Contenido del dashboard - key por organización para evitar estado viejo al cambiar de empresa */}
       {!loading && (
-        <>
+        <div key={selectedId ?? 'none'}>
           {/* Metric Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6 md:mb-8">
             <MetricCard
@@ -1120,7 +1163,7 @@ export default function DashboardPage() {
               </div>
             </CardContent>
           </Card>
-        </>
+        </div>
       )}
 
       <RateConfigModal open={rateConfigModalOpen} onOpenChange={setRateConfigModalOpen} />
