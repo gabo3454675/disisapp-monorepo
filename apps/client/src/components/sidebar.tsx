@@ -116,7 +116,7 @@ export default function Sidebar() {
     router.push('/login');
   };
 
-  // Cambio de organización: obtener nuevo JWT con el tenantId (backend no confía en el frontend) y recargar
+  // Cambio de organización: obtener nuevo JWT con el tenantId (backend no confía en el frontend)
   const handleOrganizationChange = async (organizationId: number) => {
     if (user?.isSuperAdmin || (user?.organizations && user.organizations.length > 0)) {
       try {
@@ -134,6 +134,7 @@ export default function Sidebar() {
       selectCompany(organizationId);
     }
     if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('organization-changed'));
       window.location.href = '/';
     }
   };
