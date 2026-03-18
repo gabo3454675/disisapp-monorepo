@@ -23,7 +23,7 @@ import { cn } from '@/lib/utils';
 import { usePermission } from '@/hooks/usePermission';
 import { canShowNavItem } from '@/hooks/useNavByRole';
 import { useAuthStore } from '@/store/useAuthStore';
-import { apiClient } from '@/lib/api';
+import { apiClient, authService } from '@/lib/api';
 
 const navigationItems = [
   { id: 'dashboard', label: 'Dashboard', icon: Grid2x2, href: '/', permission: 'canViewDashboard' as const },
@@ -91,13 +91,27 @@ export default function BottomNav() {
   const hasMultipleOrganizations = organizations.length > 1 || (user?.isSuperAdmin === true && organizations.length >= 1);
   const selectedId = selectedOrganizationId || selectedCompanyId;
 
-  const handleOrganizationChange = (organizationId: number) => {
+  const handleOrganizationChange = async (organizationId: number) => {
     if (user?.isSuperAdmin || (user?.organizations && user.organizations.length > 0)) {
-      selectOrganization(organizationId);
+      try {
+        const data = await authService.switchOrganization(organizationId);
+        if (data?.access_token) {
+          // Actualizar el JWT con el tenant correcto y reflejar selección en el store
+          useAuthStore.getState().setToken(data.access_token);
+          selectOrganization(data.organizationId ?? organizationId);
+        } else {
+          selectOrganization(organizationId);
+        }
+      } catch {
+        // Si falla el switch en backend, al menos actualizar selección local
+        selectOrganization(organizationId);
+      }
     } else {
       selectCompany(organizationId);
     }
+
     if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('organization-changed'));
       window.location.href = '/';
     }
   };
