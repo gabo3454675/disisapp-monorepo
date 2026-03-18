@@ -814,7 +814,13 @@ export default function DashboardPage() {
                           </defs>
                           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                           <XAxis dataKey="fecha" className="text-muted-foreground" tick={{ fontSize: 12 }} />
-                          <YAxis className="text-muted-foreground" tick={{ fontSize: 12 }} tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))} />
+                          <YAxis
+                            className="text-muted-foreground"
+                            tick={{ fontSize: 12 }}
+                            tickFormatter={(v: number) =>
+                              v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)
+                            }
+                          />
                           <Tooltip
                             contentStyle={{
                               backgroundColor: 'hsl(var(--card))',
