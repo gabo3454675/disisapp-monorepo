@@ -17,63 +17,63 @@ import apiClient from '@/lib/api';
 import { usePermission } from '@/hooks/usePermission';
 
 // Cargar componentes pesados de Recharts solo en el cliente
-const ResponsiveContainer = dynamic(
+const ResponsiveContainer = dynamic<any>(
   () => import('recharts').then((m) => m.ResponsiveContainer as any),
   { ssr: false }
 );
-const CartesianGrid = dynamic(
+const CartesianGrid = dynamic<any>(
   () => import('recharts').then((m) => m.CartesianGrid as any),
   { ssr: false }
 );
-const XAxis = dynamic(
+const XAxis = dynamic<any>(
   () => import('recharts').then((m) => m.XAxis as any),
   { ssr: false }
 );
-const YAxis = dynamic(
+const YAxis = dynamic<any>(
   () => import('recharts').then((m) => m.YAxis as any),
   { ssr: false }
 );
-const Tooltip = dynamic(
+const Tooltip = dynamic<any>(
   () => import('recharts').then((m) => m.Tooltip as any),
   { ssr: false }
 );
-const Legend = dynamic(
+const Legend = dynamic<any>(
   () => import('recharts').then((m) => m.Legend as any),
   { ssr: false }
 );
-const AreaChart = dynamic(
+const AreaChart = dynamic<any>(
   () => import('recharts').then((m) => m.AreaChart as any),
   { ssr: false }
 );
-const Area = dynamic(
+const Area = dynamic<any>(
   () => import('recharts').then((m) => m.Area as any),
   { ssr: false }
 );
-const BarChart = dynamic(
+const BarChart = dynamic<any>(
   () => import('recharts').then((m) => m.BarChart as any),
   { ssr: false }
 );
-const Bar = dynamic(
+const Bar = dynamic<any>(
   () => import('recharts').then((m) => m.Bar as any),
   { ssr: false }
 );
-const ComposedChart = dynamic(
+const ComposedChart = dynamic<any>(
   () => import('recharts').then((m) => m.ComposedChart as any),
   { ssr: false }
 );
-const Line = dynamic(
+const Line = dynamic<any>(
   () => import('recharts').then((m) => m.Line as any),
   { ssr: false }
 );
-const ScatterChart = dynamic(
+const ScatterChart = dynamic<any>(
   () => import('recharts').then((m) => m.ScatterChart as any),
   { ssr: false }
 );
-const Scatter = dynamic(
+const Scatter = dynamic<any>(
   () => import('recharts').then((m) => m.Scatter as any),
   { ssr: false }
 );
-const ZAxis = dynamic(
+const ZAxis = dynamic<any>(
   () => import('recharts').then((m) => m.ZAxis as any),
   { ssr: false }
 );
