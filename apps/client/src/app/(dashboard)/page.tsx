@@ -828,7 +828,7 @@ export default function DashboardPage() {
                               borderRadius: '8px',
                             }}
                             formatter={(value: number) => [value.toFixed(2), '']}
-                            labelFormatter={(label) => `Fecha: ${label}`}
+                            labelFormatter={(label: string) => `Fecha: ${label}`}
                           />
                           <Legend />
                           <Area type="monotone" dataKey="ventasUsd" name="Ventas en $" stroke="#3b82f6" fillOpacity={1} fill="url(#colorVentasUsd)" />
@@ -862,7 +862,11 @@ export default function DashboardPage() {
                           margin={{ top: 5, right: 20, left: 0, bottom: 5 }}
                         >
                           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                          <XAxis type="number" className="text-muted-foreground" tickFormatter={(v) => formatForDisplay(v)} />
+                          <XAxis
+                            type="number"
+                            className="text-muted-foreground"
+                            tickFormatter={(v: number) => formatForDisplay(v)}
+                          />
                           <YAxis type="category" dataKey="name" width={100} tick={{ fontSize: 11 }} />
                           <Tooltip
                             contentStyle={{
@@ -920,7 +924,11 @@ export default function DashboardPage() {
                           >
                             <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                             <XAxis dataKey="name" className="text-muted-foreground" angle={-35} textAnchor="end" interval={0} tick={{ fontSize: 10 }} />
-                            <YAxis className="text-muted-foreground" tick={{ fontSize: 11 }} tickFormatter={(v) => formatForDisplay(v)} />
+                            <YAxis
+                              className="text-muted-foreground"
+                              tick={{ fontSize: 11 }}
+                              tickFormatter={(v: number) => formatForDisplay(v)}
+                            />
                             <Tooltip
                               contentStyle={{
                                 backgroundColor: 'hsl(var(--card))',
@@ -928,7 +936,9 @@ export default function DashboardPage() {
                                 borderRadius: '8px',
                               }}
                               formatter={(value: number) => [formatForDisplay(value), '']}
-                              labelFormatter={(_, payload) => payload?.[0]?.payload?.productName}
+                              labelFormatter={(_: string, payload: any[]) =>
+                                payload?.[0]?.payload?.productName
+                              }
                             />
                             <Legend />
                             <Line type="monotone" dataKey="costPrice" name="Costo reposición" stroke="#f59e0b" strokeWidth={2} dot={false} />
@@ -938,9 +948,16 @@ export default function DashboardPage() {
                               name="Precio venta"
                               stroke="#3b82f6"
                               strokeWidth={2}
-                              dot={({ cx, cy, payload }) =>
+                              dot={({ cx, cy, payload }: { cx: number; cy: number; payload: any }) =>
                                 payload.marginCritical ? (
-                                  <circle cx={cx} cy={cy} r={5} fill="#ef4444" stroke="#b91c1c" strokeWidth={2} />
+                                  <circle
+                                    cx={cx}
+                                    cy={cy}
+                                    r={5}
+                                    fill="#ef4444"
+                                    stroke="#b91c1c"
+                                    strokeWidth={2}
+                                  />
                                 ) : (
                                   <circle cx={cx} cy={cy} r={3} fill="#3b82f6" />
                                 )
@@ -980,7 +997,11 @@ export default function DashboardPage() {
                             layout="vertical"
                           >
                             <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                            <XAxis type="number" className="text-muted-foreground" tickFormatter={(v) => formatForDisplay(v)} />
+                            <XAxis
+                              type="number"
+                              className="text-muted-foreground"
+                              tickFormatter={(v: number) => formatForDisplay(v)}
+                            />
                             <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 11 }} />
                             <Tooltip
                               contentStyle={{
@@ -989,7 +1010,9 @@ export default function DashboardPage() {
                                 borderRadius: '8px',
                               }}
                               formatter={(value: number) => [formatForDisplay(value), '']}
-                              labelFormatter={(_, payload) => payload?.[0]?.payload?.customerName}
+                              labelFormatter={(_: string, payload: any[]) =>
+                                payload?.[0]?.payload?.customerName
+                              }
                             />
                             <Legend />
                             <Bar dataKey="aTiempo" name="A tiempo" stackId="deuda" fill="#22c55e" radius={[0, 0, 0, 0]} />
@@ -1035,7 +1058,16 @@ export default function DashboardPage() {
                           <ScatterChart margin={{ top: 20, right: 20, left: 0, bottom: 20 }}>
                             <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                             <XAxis type="number" dataKey="frequency" name="Frecuencia" className="text-muted-foreground" tick={{ fontSize: 11 }} />
-                            <YAxis type="number" dataKey="volume" name="Volumen" className="text-muted-foreground" tick={{ fontSize: 11 }} tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))} />
+                            <YAxis
+                              type="number"
+                              dataKey="volume"
+                              name="Volumen"
+                              className="text-muted-foreground"
+                              tick={{ fontSize: 11 }}
+                              tickFormatter={(v: number) =>
+                                v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)
+                              }
+                            />
                             <ZAxis type="number" dataKey="customerId" range={[80, 400]} name="" />
                             <Tooltip
                               contentStyle={{
@@ -1043,8 +1075,13 @@ export default function DashboardPage() {
                                 border: '1px solid hsl(var(--border))',
                                 borderRadius: '8px',
                               }}
-                              formatter={(value: number, name: string) => [name === 'Volumen' ? formatForDisplay(value) : value, name]}
-                              labelFormatter={(_, payload) => payload?.[0]?.payload?.customerName}
+                              formatter={(value: number, name: string) => [
+                                name === 'Volumen' ? formatForDisplay(value) : value,
+                                name,
+                              ]}
+                              labelFormatter={(_: string, payload: any[]) =>
+                                payload?.[0]?.payload?.customerName
+                              }
                             />
                             <Legend />
                             <Scatter name="Leales" data={strategy.paretoCustomers.filter((c) => c.segment === 'Leales')} fill="#22c55e" fillOpacity={0.8} />
