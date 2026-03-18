@@ -399,7 +399,7 @@ export default function DashboardPage() {
     setLoadingHealth(true);
     setLoadingDiagnosis(true);
     setLoadingStrategy(true);
-  }, [selectedId]);
+  }, [selectedId, mounted, _hasHydrated]);
 
   useEffect(() => {
     // Solo intentar cargar datos después de que todo esté hidratado
