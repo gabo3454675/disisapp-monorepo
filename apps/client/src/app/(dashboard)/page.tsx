@@ -2,24 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-  LineChart,
-  Line,
-  ComposedChart,
-  ScatterChart,
-  Scatter,
-  ZAxis,
-} from 'recharts';
+import dynamic from 'next/dynamic';
 import { MoreVertical, TrendingUp, Users, FileText, AlertCircle, Loader2, ListTodo, ExternalLink, Receipt, Percent, Banknote } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -32,6 +15,68 @@ import NotificationsSection from '@/components/notifications-section';
 import { RateConfigModal } from '@/components/rate-config-modal';
 import apiClient from '@/lib/api';
 import { usePermission } from '@/hooks/usePermission';
+
+// Cargar componentes pesados de Recharts solo en el cliente
+const ResponsiveContainer = dynamic(
+  () => import('recharts').then((m) => m.ResponsiveContainer),
+  { ssr: false }
+);
+const CartesianGrid = dynamic(
+  () => import('recharts').then((m) => m.CartesianGrid),
+  { ssr: false }
+);
+const XAxis = dynamic(
+  () => import('recharts').then((m) => m.XAxis),
+  { ssr: false }
+);
+const YAxis = dynamic(
+  () => import('recharts').then((m) => m.YAxis),
+  { ssr: false }
+);
+const Tooltip = dynamic(
+  () => import('recharts').then((m) => m.Tooltip),
+  { ssr: false }
+);
+const Legend = dynamic(
+  () => import('recharts').then((m) => m.Legend),
+  { ssr: false }
+);
+const AreaChart = dynamic(
+  () => import('recharts').then((m) => m.AreaChart),
+  { ssr: false }
+);
+const Area = dynamic(
+  () => import('recharts').then((m) => m.Area),
+  { ssr: false }
+);
+const BarChart = dynamic(
+  () => import('recharts').then((m) => m.BarChart),
+  { ssr: false }
+);
+const Bar = dynamic(
+  () => import('recharts').then((m) => m.Bar),
+  { ssr: false }
+);
+const ComposedChart = dynamic(
+  () => import('recharts').then((m) => m.ComposedChart),
+  { ssr: false }
+);
+const Line = dynamic(
+  () => import('recharts').then((m) => m.Line),
+  { ssr: false }
+);
+const ScatterChart = dynamic(
+  () => import('recharts').then((m) => m.ScatterChart),
+  { ssr: false }
+);
+const Scatter = dynamic(
+  () => import('recharts').then((m) => m.Scatter),
+  { ssr: false }
+);
+const ZAxis = dynamic(
+  () => import('recharts').then((m) => m.ZAxis),
+  { ssr: false }
+);
 
 interface DashboardSummary {
   totalSalesToday: number;
