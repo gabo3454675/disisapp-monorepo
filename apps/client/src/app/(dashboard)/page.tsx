@@ -18,63 +18,63 @@ import { usePermission } from '@/hooks/usePermission';
 
 // Cargar componentes pesados de Recharts solo en el cliente
 const ResponsiveContainer = dynamic(
-  () => import('recharts').then((m) => m.ResponsiveContainer),
+  () => import('recharts').then((m) => m.ResponsiveContainer as any),
   { ssr: false }
 );
 const CartesianGrid = dynamic(
-  () => import('recharts').then((m) => m.CartesianGrid),
+  () => import('recharts').then((m) => m.CartesianGrid as any),
   { ssr: false }
 );
 const XAxis = dynamic(
-  () => import('recharts').then((m) => m.XAxis),
+  () => import('recharts').then((m) => m.XAxis as any),
   { ssr: false }
 );
 const YAxis = dynamic(
-  () => import('recharts').then((m) => m.YAxis),
+  () => import('recharts').then((m) => m.YAxis as any),
   { ssr: false }
 );
 const Tooltip = dynamic(
-  () => import('recharts').then((m) => m.Tooltip),
+  () => import('recharts').then((m) => m.Tooltip as any),
   { ssr: false }
 );
 const Legend = dynamic(
-  () => import('recharts').then((m) => m.Legend),
+  () => import('recharts').then((m) => m.Legend as any),
   { ssr: false }
 );
 const AreaChart = dynamic(
-  () => import('recharts').then((m) => m.AreaChart),
+  () => import('recharts').then((m) => m.AreaChart as any),
   { ssr: false }
 );
 const Area = dynamic(
-  () => import('recharts').then((m) => m.Area),
+  () => import('recharts').then((m) => m.Area as any),
   { ssr: false }
 );
 const BarChart = dynamic(
-  () => import('recharts').then((m) => m.BarChart),
+  () => import('recharts').then((m) => m.BarChart as any),
   { ssr: false }
 );
 const Bar = dynamic(
-  () => import('recharts').then((m) => m.Bar),
+  () => import('recharts').then((m) => m.Bar as any),
   { ssr: false }
 );
 const ComposedChart = dynamic(
-  () => import('recharts').then((m) => m.ComposedChart),
+  () => import('recharts').then((m) => m.ComposedChart as any),
   { ssr: false }
 );
 const Line = dynamic(
-  () => import('recharts').then((m) => m.Line),
+  () => import('recharts').then((m) => m.Line as any),
   { ssr: false }
 );
 const ScatterChart = dynamic(
-  () => import('recharts').then((m) => m.ScatterChart),
+  () => import('recharts').then((m) => m.ScatterChart as any),
   { ssr: false }
 );
 const Scatter = dynamic(
-  () => import('recharts').then((m) => m.Scatter),
+  () => import('recharts').then((m) => m.Scatter as any),
   { ssr: false }
 );
 const ZAxis = dynamic(
-  () => import('recharts').then((m) => m.ZAxis),
+  () => import('recharts').then((m) => m.ZAxis as any),
   { ssr: false }
 );
 
