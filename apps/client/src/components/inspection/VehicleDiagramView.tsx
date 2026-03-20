@@ -1,6 +1,7 @@
 'use client';
 import { cn } from '@/lib/utils';
 import type { DiagramPin, DiagramView, PinStatus } from '@/types/inspection';
+import Image from 'next/image';
 
 /**
  * Vista del diagrama de inspección (pins dañado/reparado). Módulo exclusivo Davean:
@@ -74,6 +75,8 @@ interface VehicleDiagramViewProps {
   onViewChange: (view: DiagramView) => void;
   /** Ref para captura en PDF */
   diagramRef?: React.Ref<HTMLDivElement>;
+  /** Si true, usa el diagrama de plantilla Davean como fondo. */
+  useDaveanTemplateBackground?: boolean;
   className?: string;
 }
 
@@ -84,6 +87,7 @@ export function VehicleDiagramView({
   activeView,
   onViewChange,
   diagramRef,
+  useDaveanTemplateBackground,
   className,
 }: VehicleDiagramViewProps) {
   const handleDiagramClick = (e: React.MouseEvent<HTMLDivElement>, view: DiagramView) => {
@@ -129,8 +133,17 @@ export function VehicleDiagramView({
           className="absolute inset-0 cursor-crosshair flex items-center justify-center"
           title="Haz clic para colocar un pin"
         >
-          {/* Silueta del vehículo según vista (diagrama Davean) */}
-          <VehicleSilhouette view={activeView} />
+          {useDaveanTemplateBackground ? (
+            <Image
+              src="/inspection-davean-diagram.png"
+              alt="Diagrama Davean"
+              fill
+              unoptimized
+              className="object-contain p-2"
+            />
+          ) : (
+            <VehicleSilhouette view={activeView} />
+          )}
         </div>
 
         {/* Pins de esta vista */}

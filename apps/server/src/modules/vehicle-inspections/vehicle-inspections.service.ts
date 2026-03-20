@@ -6,6 +6,7 @@ import {
 import { PrismaService } from '@/common/prisma/prisma.service';
 import { MovementType } from '@prisma/client';
 import type { CreateInspectionDto } from './dto/create-inspection.dto';
+import type { UpdateInspectionDto } from './dto/update-inspection.dto';
 import ExcelJS from 'exceljs';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -67,15 +68,7 @@ export class VehicleInspectionsService {
     payload: Record<string, unknown>;
     signatureDataUrl?: string;
   }): Promise<{ buffer: Buffer; fileName: string }> {
-    const org = await this.prisma.organization.findUnique({
-      where: { id: params.organizationId },
-      select: { slug: true },
-    });
-    if (!org || org.slug !== 'davean') {
-      throw new BadRequestException(
-        'La impresión de Entrada/Salida está disponible solo para el tenant Davean.',
-      );
-    }
+    // CompanyAccessGuard ya garantiza acceso exclusivo Davean.
 
     const workbook = new ExcelJS.Workbook();
     const templatePath = this.resolveDaveanTemplatePath();
@@ -146,6 +139,37 @@ export class VehicleInspectionsService {
       buffer: Buffer.from(xlsxBuffer),
       fileName: `entrada-salida-davean-${placa}-${Date.now()}.xlsx`,
     };
+  }
+
+  async update(id: number, organizationId: number, dto: UpdateInspectionDto) {
+    const existing = await this.prisma.vehicleInspection.findFirst({
+      where: { id, tenantId: organizationId },
+      select: { id: true },
+    });
+    if (!existing) {
+      throw new NotFoundException('Inspección no encontrada.');
+    }
+
+    return this.prisma.vehicleInspection.update({
+      where: { id },
+      data: {
+        diagramPins: dto.diagramPins ? (dto.diagramPins as object) : undefined,
+        vehicleInfo: dto.vehicleInfo ?? undefined,
+        notes: dto.notes ?? undefined,
+      },
+    });
+  }
+
+  async remove(id: number, organizationId: number) {
+    const existing = await this.prisma.vehicleInspection.findFirst({
+      where: { id, tenantId: organizationId },
+      select: { id: true },
+    });
+    if (!existing) {
+      throw new NotFoundException('Inspección no encontrada.');
+    }
+    await this.prisma.vehicleInspection.delete({ where: { id } });
+    return { success: true };
   }
 
   /**
