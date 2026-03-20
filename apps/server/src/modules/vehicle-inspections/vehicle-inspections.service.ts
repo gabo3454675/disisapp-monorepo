@@ -6,6 +6,9 @@ import {
 import { PrismaService } from '@/common/prisma/prisma.service';
 import { MovementType } from '@prisma/client';
 import type { CreateInspectionDto } from './dto/create-inspection.dto';
+import ExcelJS from 'exceljs';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 /**
  * Servicio de inspección de vehículos. Módulo exclusivo Davean: el acceso está
@@ -16,6 +19,134 @@ import type { CreateInspectionDto } from './dto/create-inspection.dto';
 @Injectable()
 export class VehicleInspectionsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private resolveDaveanTemplatePath(): string {
+    const fromEnv = process.env.DAVEAN_INSPECTION_TEMPLATE_PATH;
+    const candidates = [
+      fromEnv,
+      resolve(process.cwd(), 'templates/davean-inspection-template.xlsx'),
+      resolve(
+        process.cwd(),
+        'apps/server/templates/davean-inspection-template.xlsx',
+      ),
+      resolve(process.cwd(), '../../hojas de entradas vehiculos multiservicios Davean.xlsx'),
+      resolve(
+        process.cwd(),
+        '../../../hojas de entradas vehiculos multiservicios Davean.xlsx',
+      ),
+    ].filter(Boolean) as string[];
+
+    const found = candidates.find((p) => existsSync(p));
+    if (!found) {
+      throw new NotFoundException(
+        'No se encontró el template Excel de Davean en apps/server/templates. Configura DAVEAN_INSPECTION_TEMPLATE_PATH si deseas otra ruta.',
+      );
+    }
+    return found;
+  }
+
+  private toText(value: unknown): string {
+    if (value === null || value === undefined) return '';
+    return String(value);
+  }
+
+  private parsePayload(payload: Record<string, unknown>) {
+    const ingreso = (payload.ingreso ?? {}) as Record<string, any>;
+    const datosCliente = (ingreso.datosCliente ?? {}) as Record<string, any>;
+    const vehiculo = (ingreso.vehiculo ?? {}) as Record<string, any>;
+    const recepcion = (ingreso.recepcion ?? {}) as Record<string, any>;
+    const inspeccion = (payload.inspeccion ?? {}) as Record<string, any>;
+    const internos = (inspeccion.accesoriosInternos ?? {}) as Record<string, any>;
+    const exterior = (inspeccion.checklistLucesYExterior ?? {}) as Record<string, any>;
+    const salida = (payload.salida ?? {}) as Record<string, any>;
+    return { datosCliente, vehiculo, recepcion, internos, exterior, salida };
+  }
+
+  async generateDaveanTemplateDocument(params: {
+    organizationId: number;
+    payload: Record<string, unknown>;
+    signatureDataUrl?: string;
+  }): Promise<{ buffer: Buffer; fileName: string }> {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: params.organizationId },
+      select: { slug: true },
+    });
+    if (!org || org.slug !== 'davean') {
+      throw new BadRequestException(
+        'La impresión de Entrada/Salida está disponible solo para el tenant Davean.',
+      );
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    const templatePath = this.resolveDaveanTemplatePath();
+    await workbook.xlsx.readFile(templatePath);
+    const worksheet = workbook.getWorksheet('Hoja1') ?? workbook.worksheets[0];
+    if (!worksheet) {
+      throw new NotFoundException('No se encontró la hoja del template Davean.');
+    }
+
+    const { datosCliente, vehiculo, recepcion, internos, exterior, salida } =
+      this.parsePayload(params.payload);
+
+    const set = (cell: string, value: unknown) => {
+      worksheet.getCell(cell).value = this.toText(value);
+    };
+
+    set('E2', datosCliente.cliente);
+    set('J2', datosCliente.telefono);
+    set('E4', datosCliente.direccion);
+    set('J4', datosCliente.rifCi);
+    set('D7', vehiculo.marca);
+    set('E7', vehiculo.modelo);
+    set('F7', vehiculo.anio);
+    set('G7', vehiculo.placa);
+    set('H7', vehiculo.color);
+    set('B9', recepcion.fechaIngreso);
+    set('C32', recepcion.numeroControl);
+    set('F32', recepcion.tecnico);
+    set('K39', salida.kilometrajeSalida ?? recepcion.kilometrajeIngreso);
+    set('I38', salida.recibidoPor);
+
+    const status = (v: unknown) => (v === 'N/A' ? 'N/A' : v === 'SI' ? 'SI' : 'NO');
+    set('K41', status(internos.cauchoRepuesto));
+    set('K42', status(internos.gatoHidraulicoOMecanico));
+    set('K43', status(internos.triangulo));
+    set('K44', status(internos.llaveCruz));
+    set('K45', status(internos.reproductor));
+    set('K46', status(internos.pantallaDvd));
+    set('K47', status(internos.pendrive));
+    set('K48', status(internos.cargador));
+    set('K49', status(internos.cornetas));
+
+    set('C58', status(exterior.claxonBocina));
+    set('C59', status(exterior.limpiaParabrisas));
+    set('C60', status(exterior.lucesBajas));
+    set('C61', status(exterior.lucesAltas));
+    set('C62', status(exterior.luzIntermitente));
+    set('C63', status(exterior.direccionalIzquierda));
+    set('C64', status(exterior.direccionalDerecha));
+    set('C65', status(exterior.luzFreno));
+    set('C66', status(exterior.luzPequenaStopFaros));
+    set('F65', status(exterior.placas));
+    set('F66', status(exterior.alarmaControl));
+
+    if (params.signatureDataUrl?.startsWith('data:image/')) {
+      const imageId = workbook.addImage({
+        base64: params.signatureDataUrl,
+        extension: 'png',
+      });
+      worksheet.addImage(imageId, 'I65:K66');
+    }
+
+    const xlsxBuffer = await workbook.xlsx.writeBuffer();
+    const placa = this.toText(vehiculo.placa || 'sin-placa')
+      .replace(/\s+/g, '-')
+      .toLowerCase();
+    return {
+      buffer: Buffer.from(xlsxBuffer),
+      fileName: `entrada-salida-davean-${placa}-${Date.now()}.xlsx`,
+    };
+  }
 
   /**
    * Crea una inspección de vehículo. Por cada repuesto en usedParts,

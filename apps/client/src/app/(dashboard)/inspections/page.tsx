@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { VehicleDiagramView } from '@/components/inspection/VehicleDiagramView';
+import { DaveanInspectionMobileForm } from '@/components/inspection/DaveanInspectionMobileForm';
 import { exportInspectionPdf } from '@/lib/exportInspectionPdf';
 import apiClient from '@/lib/api';
 import { usePermission } from '@/hooks/usePermission';
@@ -16,11 +17,15 @@ import {
   CheckCircle2,
   Loader2,
   FileDown,
+  Printer,
   Save,
   Plus,
   Trash2,
 } from 'lucide-react';
 import type { DiagramPin, DiagramView, PinStatus, UsedPart } from '@/types/inspection';
+import type { DaveanVehicleInspectionPayload } from '@/types/davean-inspection';
+import { DAVEAN_TEMPLATE_VERSION, DAVEAN_TENANT_SLUG } from '@/types/davean-inspection';
+import type { VehicleAnglePhotoMap } from '@/components/inspection/VehicleAnglesUploader';
 
 const DAVEAN_NAME = 'Davean';
 
@@ -30,6 +35,27 @@ interface Product {
   sku?: string | null;
   stock: number;
 }
+
+const DEFAULT_DAVEAN_PAYLOAD: DaveanVehicleInspectionPayload = {
+  tenant: {
+    organizationSlug: DAVEAN_TENANT_SLUG,
+    exclusiveTemplate: true,
+  },
+  templateVersion: DAVEAN_TEMPLATE_VERSION,
+  estadoActual: 'INGRESO',
+  ingreso: {
+    datosCliente: {},
+    vehiculo: {},
+    recepcion: {},
+    serviciosSolicitados: [],
+  },
+  inspeccion: {
+    accesoriosInternos: {},
+    checklistLucesYExterior: {},
+    danosVehiculo: [],
+  },
+  salida: {},
+};
 
 export default function InspectionsPage() {
   const router = useRouter();
@@ -42,10 +68,14 @@ export default function InspectionsPage() {
   const [usedParts, setUsedParts] = useState<UsedPart[]>([]);
   const [vehicleInfo, setVehicleInfo] = useState('');
   const [notes, setNotes] = useState('');
+  const [daveanPayload, setDaveanPayload] = useState<DaveanVehicleInspectionPayload>(DEFAULT_DAVEAN_PAYLOAD);
+  const [signatureDataUrl, setSignatureDataUrl] = useState<string | undefined>();
+  const [vehiclePhotos, setVehiclePhotos] = useState<VehicleAnglePhotoMap>({});
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [printingEntryExit, setPrintingEntryExit] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [inspectionsList, setInspectionsList] = useState<Array<{ id: number; vehicleInfo: string | null; createdAt: string; usedParts?: unknown }>>([]);
   const [loadingInspections, setLoadingInspections] = useState(true);
@@ -152,18 +182,39 @@ export default function InspectionsPage() {
     setMessage(null);
     setSaving(true);
     try {
+      const payloadWithPins = { ...daveanPayload, inspeccion: { ...daveanPayload.inspeccion, danosVehiculo: pins } };
+      const shortVehicleInfo = [
+        payloadWithPins.ingreso.vehiculo.placa,
+        `${payloadWithPins.ingreso.vehiculo.marca ?? ''} ${payloadWithPins.ingreso.vehiculo.modelo ?? ''}`.trim(),
+        payloadWithPins.ingreso.recepcion.kilometrajeIngreso
+          ? `KM ${payloadWithPins.ingreso.recepcion.kilometrajeIngreso}`
+          : '',
+      ]
+        .filter(Boolean)
+        .join(' | ');
+
+      const metadata = {
+        template: DAVEAN_TEMPLATE_VERSION,
+        payload: payloadWithPins,
+        signatureCaptured: Boolean(signatureDataUrl),
+        photosCaptured: Object.keys(vehiclePhotos),
+      };
+
       // POST usa el tenant activo (x-tenant-id). CompanyAccessGuard en backend garantiza que sea Davean.
       await apiClient.post('/vehicle-inspections', {
         diagramPins: pins.length ? pins : undefined,
         usedParts: usedParts.length ? usedParts.map((p) => ({ productId: p.productId, quantity: p.quantity })) : undefined,
-        vehicleInfo: vehicleInfo.trim() || undefined,
-        notes: notes.trim() || undefined,
+        vehicleInfo: shortVehicleInfo || vehicleInfo.trim() || undefined,
+        notes: JSON.stringify(metadata),
       });
       setMessage({ type: 'success', text: 'Inspección guardada. Se descontó el inventario (Uso taller).' });
       setPins([]);
       setUsedParts([]);
       setVehicleInfo('');
       setNotes('');
+      setDaveanPayload(DEFAULT_DAVEAN_PAYLOAD);
+      setSignatureDataUrl(undefined);
+      setVehiclePhotos({});
       loadInspections();
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
@@ -194,6 +245,37 @@ export default function InspectionsPage() {
       setMessage({ type: 'error', text: 'Error al generar el PDF.' });
     } finally {
       setExportingPdf(false);
+    }
+  };
+
+  const handlePrintEntryExit = async () => {
+    setMessage(null);
+    setPrintingEntryExit(true);
+    try {
+      const response = await apiClient.post('/vehicle-inspections/print-template', {
+        payload: { ...daveanPayload, inspeccion: { ...daveanPayload.inspeccion, danosVehiculo: pins } },
+        signatureDataUrl,
+        format: 'xlsx',
+      }, {
+        responseType: 'blob',
+      });
+
+      const blob = new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `entrada-salida-davean-${Date.now()}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      setMessage({ type: 'success', text: 'Documento Entrada/Salida generado.' });
+    } catch {
+      setMessage({ type: 'error', text: 'No se pudo generar el documento Entrada/Salida.' });
+    } finally {
+      setPrintingEntryExit(false);
     }
   };
 
@@ -245,6 +327,25 @@ export default function InspectionsPage() {
           {message.text}
         </div>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Ficha rápida Davean (mobile first)</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Flujo de ingreso, inspección y salida con botones rápidos, firma digital y fotos por ángulo.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <DaveanInspectionMobileForm
+            value={daveanPayload}
+            signature={signatureDataUrl}
+            photos={vehiclePhotos}
+            onChange={setDaveanPayload}
+            onSignatureChange={setSignatureDataUrl}
+            onPhotosChange={setVehiclePhotos}
+          />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -379,6 +480,10 @@ export default function InspectionsPage() {
         <Button variant="outline" onClick={handleExportPdf} disabled={exportingPdf}>
           {exportingPdf ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileDown className="h-4 w-4 mr-2" />}
           Exportar reporte PDF
+        </Button>
+        <Button variant="outline" onClick={handlePrintEntryExit} disabled={printingEntryExit}>
+          {printingEntryExit ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Printer className="h-4 w-4 mr-2" />}
+          Imprimir Entrada/Salida
         </Button>
       </div>
 

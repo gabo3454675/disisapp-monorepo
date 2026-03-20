@@ -1,0 +1,189 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://disis.app/schemas/vehicle-inspection/davean-v1.json",
+  "title": "Davean Vehicle Inspection",
+  "description": "Formato exclusivo del tenant Davean para inspeccion de vehiculos, mapeado desde la hoja de entradas vehiculos multiservicios.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["tenant", "estadoActual", "ingreso", "inspeccion", "salida"],
+  "properties": {
+    "tenant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["organizationSlug", "exclusiveTemplate"],
+      "properties": {
+        "organizationSlug": { "type": "string", "const": "davean" },
+        "exclusiveTemplate": { "type": "boolean", "const": true }
+      },
+      "x-disis": {
+        "mapsTo": "vehicle_inspections.tenantId",
+        "enforceByOrganizationSlug": "davean"
+      }
+    },
+    "estadoActual": {
+      "type": "string",
+      "enum": ["INGRESO", "INSPECCION", "SALIDA"]
+    },
+    "ingreso": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["datosCliente", "vehiculo", "recepcion"],
+      "properties": {
+        "datosCliente": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "cliente": { "type": "string", "maxLength": 120, "x-excelCell": "E2:H2" },
+            "telefono": { "type": "string", "maxLength": 30, "x-excelCell": "J2:K2" },
+            "direccion": { "type": "string", "maxLength": 200, "x-excelCell": "E4:H4" },
+            "rifCi": { "type": "string", "maxLength": 30, "x-excelCell": "J4:K4" }
+          }
+        },
+        "vehiculo": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "marca": { "type": "string", "maxLength": 60, "x-excelCell": "D7" },
+            "modelo": { "type": "string", "maxLength": 60, "x-excelCell": "E7" },
+            "anio": { "type": "integer", "minimum": 1950, "maximum": 2100, "x-excelCell": "F7" },
+            "placa": { "type": "string", "maxLength": 20, "x-excelCell": "G7" },
+            "color": { "type": "string", "maxLength": 30, "x-excelCell": "H7" }
+          }
+        },
+        "recepcion": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "fechaIngreso": { "type": "string", "format": "date", "x-excelCell": "B9:D9" },
+            "numeroControl": { "type": "string", "maxLength": 40, "x-excelCell": "C32:D32" },
+            "tecnico": { "type": "string", "maxLength": 120, "x-excelCell": "F32:H32" },
+            "kilometrajeIngreso": { "type": "integer", "minimum": 0, "x-excelCell": "K39" }
+          }
+        },
+        "serviciosSolicitados": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["concepto"],
+            "properties": {
+              "concepto": { "type": "string", "maxLength": 200, "x-excelCell": "A11:G30" },
+              "precioUnitario": { "type": "number", "minimum": 0, "x-excelCell": "H11:I30" },
+              "precio": { "type": "number", "minimum": 0, "x-excelCell": "J11:K30" }
+            }
+          },
+          "x-excelCell": "A11:K30"
+        }
+      },
+      "x-disis": {
+        "mapsTo": ["vehicle_inspections.vehicleInfo", "vehicle_inspections.notes"]
+      }
+    },
+    "inspeccion": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "accesoriosInternos": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "cauchoRepuesto": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "K41" },
+            "gatoHidraulicoOMecanico": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "K42" },
+            "triangulo": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "K43" },
+            "llaveCruz": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "K44" },
+            "reproductor": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "K45" },
+            "pantallaDvd": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "K46" },
+            "pendrive": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "K47" },
+            "cargador": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "K48" },
+            "cornetas": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "K49" },
+            "plantas": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "K50" },
+            "antena": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "K51" },
+            "cenicera": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "K52" },
+            "tapaSol": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "K53" },
+            "retrovisorInterno": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "K54" },
+            "cablesAuxiliares": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "K55" },
+            "alfombras": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "K56" }
+          }
+        },
+        "checklistLucesYExterior": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "claxonBocina": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "C58" },
+            "limpiaParabrisas": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "C59" },
+            "lucesBajas": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "C60" },
+            "lucesAltas": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "C61" },
+            "luzIntermitente": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "C62" },
+            "direccionalIzquierda": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "C63" },
+            "direccionalDerecha": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "C64" },
+            "luzFreno": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "C65" },
+            "luzPequenaStopFaros": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "C66" },
+            "carelosNeblineros": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "F58" },
+            "farosAdicionales": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "F59" },
+            "centroRines": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "F60" },
+            "tapaGusanillos": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "F61" },
+            "tasasRines": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "F62" },
+            "tapaGasolina": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "F63" },
+            "emblemasCompletos": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "F64" },
+            "placas": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "F65" },
+            "alarmaControl": { "$ref": "#/$defs/checkSiNo", "x-excelCell": "F66" }
+          }
+        },
+        "danosVehiculo": {
+          "type": "array",
+          "description": "Puntos sobre el diagrama grafico detallado del vehiculo.",
+          "items": { "$ref": "#/$defs/diagramPin" },
+          "x-excelCell": "A36:K56",
+          "x-disis": { "mapsTo": "vehicle_inspections.diagramPins" }
+        },
+        "observacionesInspeccion": {
+          "type": "string",
+          "maxLength": 1500,
+          "x-disis": { "mapsTo": "vehicle_inspections.notes" }
+        }
+      }
+    },
+    "salida": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fechaSalida": { "type": "string", "format": "date", "x-excelCell": "I39:J39" },
+        "kilometrajeSalida": { "type": "integer", "minimum": 0, "x-excelCell": "K39" },
+        "recibidoPor": { "type": "string", "maxLength": 120, "x-excelCell": "I38:K38" },
+        "conformidadCliente": { "type": "boolean", "x-excelCell": "I66:J66" },
+        "firmaClienteNombre": { "type": "string", "maxLength": 120, "x-excelCell": "I66:J66" }
+      }
+    }
+  },
+  "$defs": {
+    "checkSiNo": {
+      "type": "string",
+      "enum": ["SI", "NO", "N/A"],
+      "default": "N/A"
+    },
+    "diagramPin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["view", "x", "y", "status"],
+      "properties": {
+        "view": {
+          "type": "string",
+          "enum": ["frontal", "trasera", "lateral", "superior"]
+        },
+        "x": { "type": "number", "minimum": 0, "maximum": 100 },
+        "y": { "type": "number", "minimum": 0, "maximum": 100 },
+        "status": { "type": "string", "enum": ["damaged", "repaired"] },
+        "description": { "type": "string", "maxLength": 250 }
+      }
+    }
+  },
+  "x-disisCompatibility": {
+    "targetModel": "VehicleInspection",
+    "storageStrategy": {
+      "tenantId": "resolved from tenant.organizationSlug = davean",
+      "vehicleInfo": "serialized ingreso.datosCliente + ingreso.vehiculo + ingreso.recepcion",
+      "diagramPins": "inspeccion.danosVehiculo",
+      "notes": "serialized inspeccion/salida metadata"
+    }
+  }
+}
