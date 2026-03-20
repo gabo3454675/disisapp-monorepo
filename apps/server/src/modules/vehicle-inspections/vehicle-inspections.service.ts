@@ -2,12 +2,13 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { PrismaService } from '@/common/prisma/prisma.service';
 import { MovementType } from '@prisma/client';
 import type { CreateInspectionDto } from './dto/create-inspection.dto';
 import type { UpdateInspectionDto } from './dto/update-inspection.dto';
-import ExcelJS from 'exceljs';
+import * as ExcelJS from 'exceljs';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -68,77 +69,89 @@ export class VehicleInspectionsService {
     payload: Record<string, unknown>;
     signatureDataUrl?: string;
   }): Promise<{ buffer: Buffer; fileName: string }> {
-    // CompanyAccessGuard ya garantiza acceso exclusivo Davean.
+    try {
+      // CompanyAccessGuard ya garantiza acceso exclusivo Davean.
+      const workbook = new ExcelJS.Workbook();
+      const templatePath = this.resolveDaveanTemplatePath();
+      await workbook.xlsx.readFile(templatePath);
+      const worksheet = workbook.getWorksheet('Hoja1') ?? workbook.worksheets[0];
+      if (!worksheet) {
+        throw new NotFoundException('No se encontró la hoja del template Davean.');
+      }
 
-    const workbook = new ExcelJS.Workbook();
-    const templatePath = this.resolveDaveanTemplatePath();
-    await workbook.xlsx.readFile(templatePath);
-    const worksheet = workbook.getWorksheet('Hoja1') ?? workbook.worksheets[0];
-    if (!worksheet) {
-      throw new NotFoundException('No se encontró la hoja del template Davean.');
+      const { datosCliente, vehiculo, recepcion, internos, exterior, salida } =
+        this.parsePayload(params.payload);
+
+      const set = (cell: string, value: unknown) => {
+        worksheet.getCell(cell).value = this.toText(value);
+      };
+
+      set('E2', datosCliente.cliente);
+      set('J2', datosCliente.telefono);
+      set('E4', datosCliente.direccion);
+      set('J4', datosCliente.rifCi);
+      set('D7', vehiculo.marca);
+      set('E7', vehiculo.modelo);
+      set('F7', vehiculo.anio);
+      set('G7', vehiculo.placa);
+      set('H7', vehiculo.color);
+      set('B9', recepcion.fechaIngreso);
+      set('C32', recepcion.numeroControl);
+      set('F32', recepcion.tecnico);
+      set('K39', salida.kilometrajeSalida ?? recepcion.kilometrajeIngreso);
+      set('I38', salida.recibidoPor);
+
+      const status = (v: unknown) =>
+        v === 'N/A' ? 'N/A' : v === 'SI' ? 'SI' : 'NO';
+      set('K41', status(internos.cauchoRepuesto));
+      set('K42', status(internos.gatoHidraulicoOMecanico));
+      set('K43', status(internos.triangulo));
+      set('K44', status(internos.llaveCruz));
+      set('K45', status(internos.reproductor));
+      set('K46', status(internos.pantallaDvd));
+      set('K47', status(internos.pendrive));
+      set('K48', status(internos.cargador));
+      set('K49', status(internos.cornetas));
+
+      set('C58', status(exterior.claxonBocina));
+      set('C59', status(exterior.limpiaParabrisas));
+      set('C60', status(exterior.lucesBajas));
+      set('C61', status(exterior.lucesAltas));
+      set('C62', status(exterior.luzIntermitente));
+      set('C63', status(exterior.direccionalIzquierda));
+      set('C64', status(exterior.direccionalDerecha));
+      set('C65', status(exterior.luzFreno));
+      set('C66', status(exterior.luzPequenaStopFaros));
+      set('F65', status(exterior.placas));
+      set('F66', status(exterior.alarmaControl));
+
+      if (params.signatureDataUrl?.startsWith('data:image/')) {
+        try {
+          const imageId = workbook.addImage({
+            base64: params.signatureDataUrl,
+            extension: 'png',
+          });
+          worksheet.addImage(imageId, 'I65:K66');
+        } catch {
+          // Si la firma viene corrupta, no bloqueamos la generación del documento.
+        }
+      }
+
+      const xlsxBuffer = await workbook.xlsx.writeBuffer();
+      const placa = this.toText(vehiculo.placa || 'sin-placa')
+        .replace(/\s+/g, '-')
+        .toLowerCase();
+      return {
+        buffer: Buffer.from(xlsxBuffer),
+        fileName: `entrada-salida-davean-${placa}-${Date.now()}.xlsx`,
+      };
+    } catch (error: unknown) {
+      const msg =
+        error instanceof Error ? error.message : 'Error desconocido al crear Excel';
+      throw new InternalServerErrorException(
+        `No se pudo generar el documento Entrada/Salida: ${msg}`,
+      );
     }
-
-    const { datosCliente, vehiculo, recepcion, internos, exterior, salida } =
-      this.parsePayload(params.payload);
-
-    const set = (cell: string, value: unknown) => {
-      worksheet.getCell(cell).value = this.toText(value);
-    };
-
-    set('E2', datosCliente.cliente);
-    set('J2', datosCliente.telefono);
-    set('E4', datosCliente.direccion);
-    set('J4', datosCliente.rifCi);
-    set('D7', vehiculo.marca);
-    set('E7', vehiculo.modelo);
-    set('F7', vehiculo.anio);
-    set('G7', vehiculo.placa);
-    set('H7', vehiculo.color);
-    set('B9', recepcion.fechaIngreso);
-    set('C32', recepcion.numeroControl);
-    set('F32', recepcion.tecnico);
-    set('K39', salida.kilometrajeSalida ?? recepcion.kilometrajeIngreso);
-    set('I38', salida.recibidoPor);
-
-    const status = (v: unknown) => (v === 'N/A' ? 'N/A' : v === 'SI' ? 'SI' : 'NO');
-    set('K41', status(internos.cauchoRepuesto));
-    set('K42', status(internos.gatoHidraulicoOMecanico));
-    set('K43', status(internos.triangulo));
-    set('K44', status(internos.llaveCruz));
-    set('K45', status(internos.reproductor));
-    set('K46', status(internos.pantallaDvd));
-    set('K47', status(internos.pendrive));
-    set('K48', status(internos.cargador));
-    set('K49', status(internos.cornetas));
-
-    set('C58', status(exterior.claxonBocina));
-    set('C59', status(exterior.limpiaParabrisas));
-    set('C60', status(exterior.lucesBajas));
-    set('C61', status(exterior.lucesAltas));
-    set('C62', status(exterior.luzIntermitente));
-    set('C63', status(exterior.direccionalIzquierda));
-    set('C64', status(exterior.direccionalDerecha));
-    set('C65', status(exterior.luzFreno));
-    set('C66', status(exterior.luzPequenaStopFaros));
-    set('F65', status(exterior.placas));
-    set('F66', status(exterior.alarmaControl));
-
-    if (params.signatureDataUrl?.startsWith('data:image/')) {
-      const imageId = workbook.addImage({
-        base64: params.signatureDataUrl,
-        extension: 'png',
-      });
-      worksheet.addImage(imageId, 'I65:K66');
-    }
-
-    const xlsxBuffer = await workbook.xlsx.writeBuffer();
-    const placa = this.toText(vehiculo.placa || 'sin-placa')
-      .replace(/\s+/g, '-')
-      .toLowerCase();
-    return {
-      buffer: Buffer.from(xlsxBuffer),
-      fileName: `entrada-salida-davean-${placa}-${Date.now()}.xlsx`,
-    };
   }
 
   async update(id: number, organizationId: number, dto: UpdateInspectionDto) {
