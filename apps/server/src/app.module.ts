@@ -27,6 +27,7 @@ import { VehicleInspectionsModule } from './modules/vehicle-inspections/vehicle-
 import { CierreCajaModule } from './modules/cierre-caja/cierre-caja.module';
 import { ActivityLogModule } from './modules/activity-log/activity-log.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { AuditoriaModule } from './common/auditoria/auditoria.module';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     CierreCajaModule,
     ActivityLogModule,
     NotificationsModule,
+    AuditoriaModule,
   ],
   controllers: [AppController],
   providers: [

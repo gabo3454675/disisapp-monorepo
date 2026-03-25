@@ -8,10 +8,6 @@ import { tenantIsolationExtension } from './tenant-isolation.extension';
 const databaseUrl =
   process.env.DATABASE_URL ?? 'postgresql://user:pass@localhost:5432/db';
 
-const extendedClient = new PrismaClient({
-  datasources: { db: { url: databaseUrl } },
-}).$extends(tenantIsolationExtension) as PrismaClient;
-
 @Injectable()
 export class PrismaService
   extends PrismaClient
@@ -19,14 +15,17 @@ export class PrismaService
 {
   constructor() {
     super({ datasources: { db: { url: databaseUrl } } });
-    Object.assign(this, extendedClient);
+    // Extiende el mismo cliente inyectado para evitar mezclar instancias.
+    // Mezclar clientes puede invalidar transacciones interactivas en ejecución.
+    const extended = this.$extends(tenantIsolationExtension) as PrismaClient;
+    Object.assign(this, extended);
   }
 
   async onModuleInit() {
-    await extendedClient.$connect();
+    await this.$connect();
   }
 
   async onModuleDestroy() {
-    await extendedClient.$disconnect();
+    await this.$disconnect();
   }
 }

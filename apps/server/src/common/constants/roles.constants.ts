@@ -1,7 +1,7 @@
 /**
  * Fuente de verdad: Roles y permisos - Disis SaaS Multi-Tenant
  *
- * Roles en BD (Prisma enum Role): SUPER_ADMIN, ADMIN, MANAGER, SELLER, WAREHOUSE
+ * Roles en BD (Prisma enum Role): SUPER_ADMIN, ADMIN, FISCAL, MANAGER, SELLER, WAREHOUSE
  * A nivel de permisos/documentación: USER = SELLER | WAREHOUSE (roles operativos).
  */
 
@@ -9,6 +9,7 @@
 export const ROLES = {
   SUPER_ADMIN: 'SUPER_ADMIN',
   ADMIN: 'ADMIN',
+  FISCAL: 'FISCAL',
   MANAGER: 'MANAGER',
   SELLER: 'SELLER',
   WAREHOUSE: 'WAREHOUSE',
@@ -24,6 +25,7 @@ export const USER_ROLES: RoleValue[] = [ROLES.SELLER, ROLES.WAREHOUSE];
 export const ROLE_ORDER: Record<string, number> = {
   [ROLES.SUPER_ADMIN]: 5,
   [ROLES.ADMIN]: 4,
+  [ROLES.FISCAL]: 3,
   [ROLES.MANAGER]: 3,
   [ROLES.SELLER]: 2,
   [ROLES.WAREHOUSE]: 1,

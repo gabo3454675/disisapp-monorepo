@@ -36,6 +36,7 @@ model User {
   cierresCaja    CierreCaja[]            // Cierres de caja que realizó (cajero)
   activityLogs  ActivityLog[]            // Auditoría: quién cambió precio, eliminó factura, etc.
   fcmTokens     FcmToken[]               // Tokens FCM para notificaciones push (Super Admin)
+  auditorias    Auditoria[]              // Auditoría SAC (declaraciones fiscales)
 
   @@index([isSuperAdmin])
   @@map("users")
@@ -87,6 +88,7 @@ model CompanyMember {
 enum Role {
   SUPER_ADMIN
   ADMIN
+  FISCAL // Rol SAC: declaraciones y contribuyentes (fiscal)
   MANAGER
   SELLER
   WAREHOUSE
@@ -803,4 +805,72 @@ model AuditLog {
   @@index([createdAt])
   @@index([action])
   @@map("audit_logs")
+}
+
+// ------------------------------------------
+// MÓDULO SAC - DECLARACIONES FISCALES
+// Soft delete con deleted_at (nullable)
+// ------------------------------------------
+model Contribuyente {
+  id            Int                @id @default(autoincrement())
+  RIF           String             @unique @map("RIF")
+  deleted_at    DateTime?
+  created_at    DateTime           @default(now())
+  updated_at    DateTime           @updatedAt
+
+  declaracionesIva  Declaracion_IVA[]
+  declaracionesIslr Declaracion_ISLR[]
+
+  @@index([deleted_at])
+  @@map("contribuyentes")
+}
+
+model Declaracion_IVA {
+  id               Int           @id @default(autoincrement())
+  contribuyente_id Int
+  deleted_at       DateTime?
+  created_at       DateTime      @default(now())
+  updated_at       DateTime      @updatedAt
+
+  contribuyente    Contribuyente @relation(fields: [contribuyente_id], references: [id], onDelete: Restrict)
+
+  @@index([contribuyente_id])
+  @@index([deleted_at])
+  @@map("declaraciones_iva")
+}
+
+model Declaracion_ISLR {
+  id               Int           @id @default(autoincrement())
+  contribuyente_id Int
+  deleted_at       DateTime?
+  created_at       DateTime      @default(now())
+  updated_at       DateTime      @updatedAt
+
+  contribuyente    Contribuyente @relation(fields: [contribuyente_id], references: [id], onDelete: Restrict)
+
+  @@index([contribuyente_id])
+  @@index([deleted_at])
+  @@map("declaraciones_islr")
+}
+
+// ------------------------------------------
+// AUDITORÍA SAC (cambios en módulo fiscal)
+// ------------------------------------------
+model Auditoria {
+  id                 Int      @id @default(autoincrement())
+  usuario_id         Int
+  accion             String // ej. EDITAR_IVA, BORRAR_CONTRIBUYENTE
+  entidad            String // nombre lógico de tabla / recurso
+  entidad_id         String // id del registro (string para UUID o numéricos)
+  valores_anteriores Json?
+  valores_nuevos     Json?
+  fecha              DateTime @default(now())
+
+  usuario User @relation(fields: [usuario_id], references: [id], onDelete: Restrict)
+
+  @@index([usuario_id])
+  @@index([entidad])
+  @@index([fecha])
+  @@index([entidad, entidad_id])
+  @@map("auditorias")
 }
