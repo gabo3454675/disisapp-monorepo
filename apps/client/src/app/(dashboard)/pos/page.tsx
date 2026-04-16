@@ -15,7 +15,10 @@ import {
   CheckCircle2,
   Loader2,
   Printer,
+  Layers,
+  Sparkles,
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import apiClient, { invoiceService } from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePermission } from '@/hooks/usePermission';
@@ -101,6 +104,8 @@ export default function POSPage() {
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
+  /** Ver todo el catálogo o acotar a combos/servicios (más rápido de encontrar). */
+  const [catalogFilter, setCatalogFilter] = useState<'all' | 'special'>('all');
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -174,17 +179,21 @@ export default function POSPage() {
       .catch(() => setCustomerCredit(null));
   }, [selectedCustomerId]);
 
-  // Filtrar productos por búsqueda (usando debounce)
+  // Catálogo: opcional solo combos/servicios + búsqueda con debounce
   const filteredProducts = useMemo(() => {
-    if (!debouncedSearchQuery) return products;
+    let list =
+      catalogFilter === 'special'
+        ? products.filter((p) => p.isBundle || p.isService)
+        : products;
+    if (!debouncedSearchQuery) return list;
     const query = debouncedSearchQuery.toLowerCase();
-    return products.filter(
+    return list.filter(
       (product) =>
         product.name.toLowerCase().includes(query) ||
         product.sku?.toLowerCase().includes(query) ||
-        product.barcode?.toLowerCase().includes(query)
+        product.barcode?.toLowerCase().includes(query),
     );
-  }, [products, debouncedSearchQuery]);
+  }, [products, debouncedSearchQuery, catalogFilter]);
 
   /** Máx. unidades según receta (combo o servicio con insumos). */
   const sellableUnitsFromRecipe = useCallback(
@@ -609,8 +618,29 @@ export default function POSPage() {
               <CardTitle>Catálogo de Productos</CardTitle>
             </CardHeader>
             <CardContent className="flex-1 flex flex-col min-h-0">
-              {/* Barra de búsqueda */}
-              <div className="mb-4">
+              {/* Filtro rápido + búsqueda */}
+              <div className="mb-4 space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={catalogFilter === 'all' ? 'default' : 'outline'}
+                    className="h-8 text-xs"
+                    onClick={() => setCatalogFilter('all')}
+                  >
+                    Todo el inventario
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={catalogFilter === 'special' ? 'default' : 'outline'}
+                    className="h-8 gap-1.5 text-xs"
+                    onClick={() => setCatalogFilter('special')}
+                  >
+                    <Layers className="h-3.5 w-3.5" />
+                    Combos y servicios
+                  </Button>
+                </div>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -633,33 +663,57 @@ export default function POSPage() {
                     {filteredProducts.map((product) => (
                       <Card
                         key={product.id}
-                        className="cursor-pointer hover:border-primary transition-colors"
+                        className={cn(
+                          'cursor-pointer transition-all hover:border-primary hover:shadow-md',
+                          product.isBundle &&
+                            'border-amber-500/45 bg-gradient-to-br from-amber-500/[0.07] to-transparent',
+                          product.isService &&
+                            !product.isBundle &&
+                            'border-sky-500/40 bg-gradient-to-br from-sky-500/[0.07] to-transparent',
+                        )}
                         onClick={() => sellableUnits(product) > 0 && addToCart(product)}
                       >
                         <CardContent className="p-4">
-                          <div className="flex items-center justify-center mb-2">
-                            <Package className="h-12 w-12 text-muted-foreground" />
+                          <div className="flex items-center justify-between gap-2 mb-2 min-h-[22px]">
+                            {product.isBundle ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-300">
+                                <Layers className="h-3.5 w-3.5" />
+                                Combo
+                              </span>
+                            ) : product.isService ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-sky-700 dark:text-sky-300">
+                                <Sparkles className="h-3.5 w-3.5" />
+                                Servicio
+                              </span>
+                            ) : (
+                              <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                                Producto
+                              </span>
+                            )}
                           </div>
-                          <h3 className="font-semibold text-sm mb-1 line-clamp-2">{product.name}</h3>
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-lg font-bold text-primary">
+                          <div className="flex items-center justify-center mb-2">
+                            <Package className="h-10 w-10 text-muted-foreground/80" />
+                          </div>
+                          <h3 className="font-semibold text-sm mb-1 line-clamp-2 leading-snug">{product.name}</h3>
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <span className="text-lg font-bold text-primary tabular-nums">
                               {formatCurrency(getUnitPriceDisplay(product))}
                             </span>
                             <Badge
                               variant={sellableUnits(product) > 0 ? 'default' : 'destructive'}
-                              className="text-xs"
+                              className="text-[10px] shrink-0 max-w-[120px] justify-center"
                             >
                               {product.isBundle
-                                ? `Combo: ${sellableUnits(product)}`
+                                ? `${sellableUnits(product)} disp.`
                                 : product.isService
                                   ? product.bundleComponents?.length
-                                    ? `Servicio: ${sellableUnits(product)}`
-                                    : 'Servicio'
-                                  : `Stock: ${product.stock}`}
+                                    ? `${sellableUnits(product)} disp.`
+                                    : 'Cobro'
+                                  : `Stock ${product.stock}`}
                             </Badge>
                           </div>
                           {sellableUnits(product) === 0 && (
-                            <p className="text-xs text-destructive">Sin stock</p>
+                            <p className="text-xs text-destructive">Sin disponibilidad</p>
                           )}
                         </CardContent>
                       </Card>

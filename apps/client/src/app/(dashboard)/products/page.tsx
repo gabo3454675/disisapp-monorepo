@@ -29,6 +29,11 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { usePermission } from '@/hooks/usePermission';
 import { StockAdjustSheet } from '@/components/stock-adjust-sheet';
 import { Badge } from '@/components/ui/badge';
+import {
+  BundleRecipeEditor,
+  parseRecipeFromUnknown,
+  type RecipeLine,
+} from '@/components/bundle-recipe-editor';
 
 type SalePriceCurrency = 'USD' | 'VES';
 
@@ -46,6 +51,7 @@ interface Product {
   imageUrl?: string | null;
   isExempt?: boolean;
   isBundle?: boolean;
+  isService?: boolean;
   bundleComponents?: unknown;
 }
 
@@ -67,7 +73,8 @@ export default function ProductsPage() {
     stock: '',
     minStock: '5',
     isBundle: false,
-    bundleComponentsJson: '[\n  { "productId": 0, "quantity": 1 }\n]',
+    isService: false,
+    bundleLines: [] as RecipeLine[],
   });
   const [submitting, setSubmitting] = useState(false);
   const [stockSheetOpen, setStockSheetOpen] = useState(false);
@@ -140,6 +147,18 @@ export default function ProductsPage() {
     fetchProducts();
   }, [fetchProducts]);
 
+  /** Catálogo para armar recetas (excluye combos en el editor internamente). */
+  const recipeCatalog = useMemo(
+    () =>
+      products.map((p) => ({
+        id: p.id,
+        name: p.name,
+        sku: p.sku,
+        isBundle: p.isBundle,
+      })),
+    [products],
+  );
+
   const handleOpenDialog = (product?: Product) => {
     if (product) {
       setEditingProduct(product);
@@ -153,9 +172,8 @@ export default function ProductsPage() {
         stock: product.stock.toString(),
         minStock: product.minStock.toString(),
         isBundle: !!product.isBundle,
-        bundleComponentsJson: product.bundleComponents
-          ? JSON.stringify(product.bundleComponents, null, 2)
-          : '[\n  { "productId": 0, "quantity": 1 }\n]',
+        isService: !!product.isService && !product.isBundle,
+        bundleLines: parseRecipeFromUnknown(product.bundleComponents),
       });
     } else {
       setEditingProduct(null);
@@ -169,7 +187,8 @@ export default function ProductsPage() {
         stock: '',
         minStock: '5',
         isBundle: false,
-        bundleComponentsJson: '[\n  { "productId": 0, "quantity": 1 }\n]',
+        isService: false,
+        bundleLines: [],
       });
     }
     setIsDialogOpen(true);
@@ -188,7 +207,8 @@ export default function ProductsPage() {
       stock: '',
       minStock: '5',
       isBundle: false,
-      bundleComponentsJson: '[\n  { "productId": 0, "quantity": 1 }\n]',
+      isService: false,
+      bundleLines: [],
     });
   };
 
@@ -199,21 +219,18 @@ export default function ProductsPage() {
       alert('El nombre y el precio de venta son requeridos');
       return;
     }
+    if (formData.isBundle && formData.isService) {
+      alert('Un producto no puede ser combo y servicio a la vez.');
+      return;
+    }
+    if (formData.isBundle && formData.bundleLines.length === 0) {
+      alert('Añade al menos un producto al combo usando el buscador.');
+      return;
+    }
 
     setSubmitting(true);
 
     try {
-      let bundleComponents: unknown = undefined;
-      if (formData.isBundle) {
-        try {
-          bundleComponents = JSON.parse(formData.bundleComponentsJson);
-        } catch {
-          alert('JSON de combo inválido. Use el formato: [{"productId":1,"quantity":2}]');
-          setSubmitting(false);
-          return;
-        }
-      }
-
       const productData: Record<string, unknown> = {
         name: formData.name,
         sku: formData.sku || undefined,
@@ -224,9 +241,13 @@ export default function ProductsPage() {
         stock: formData.stock ? parseInt(formData.stock) : undefined,
         minStock: formData.minStock ? parseInt(formData.minStock) : undefined,
         isBundle: formData.isBundle,
+        isService: formData.isBundle ? false : formData.isService,
       };
       if (formData.isBundle) {
-        productData.bundleComponents = bundleComponents;
+        productData.bundleComponents = formData.bundleLines;
+      } else if (formData.isService) {
+        productData.bundleComponents =
+          formData.bundleLines.length > 0 ? formData.bundleLines : null;
       } else {
         productData.isBundle = false;
         productData.bundleComponents = [];
@@ -508,7 +529,21 @@ export default function ProductsPage() {
                     <Card key={product.id} className="p-4">
                       <div className="flex justify-between items-start gap-2">
                         <div className="min-w-0 flex-1">
-                          <p className="font-medium truncate">{product.name}</p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-medium truncate">{product.name}</p>
+                            {product.isBundle ? (
+                              <Badge variant="secondary" className="text-[10px] shrink-0">
+                                Combo
+                              </Badge>
+                            ) : product.isService ? (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] shrink-0 border-sky-500/45 text-sky-800 dark:text-sky-200"
+                              >
+                                Servicio
+                              </Badge>
+                            ) : null}
+                          </div>
                           <p className="text-sm text-muted-foreground mt-1">
                             {formatCurrency(Number(product.salePrice))} · Stock: {product.stock}
                             {product.barcode ? ` · ${product.barcode}` : ''}
@@ -574,8 +609,15 @@ export default function ProductsPage() {
                           <TableCell>
                             {product.isBundle ? (
                               <Badge variant="secondary">Combo</Badge>
+                            ) : product.isService ? (
+                              <Badge
+                                variant="outline"
+                                className="border-sky-500/45 text-sky-800 dark:text-sky-200"
+                              >
+                                Servicio
+                              </Badge>
                             ) : (
-                              <span className="text-muted-foreground text-sm">—</span>
+                              <span className="text-muted-foreground text-sm">Inventario</span>
                             )}
                           </TableCell>
                           <TableCell>{formatCurrency(Number(product.salePrice))}</TableCell>
@@ -628,15 +670,14 @@ export default function ProductsPage() {
 
         {/* Dialog para crear/editar */}
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogContent className="sm:max-w-[500px]">
+          <DialogContent className="sm:max-w-[560px] max-h-[92vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>
                 {editingProduct ? 'Editar Producto' : 'Nuevo Producto'}
               </DialogTitle>
               <DialogDescription>
-                {editingProduct
-                  ? 'Modifica los datos del producto'
-                  : 'Completa los datos para crear un nuevo producto'}
+                Producto de inventario, combo o servicio. Los combos y servicios con insumos se venden igual en el
+                POS.
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit}>
@@ -736,35 +777,76 @@ export default function ProductsPage() {
                     />
                   </div>
                 </div>
-                <div className="flex items-center gap-2 pt-2">
-                  <input
-                    id="isBundle"
-                    type="checkbox"
-                    className="h-4 w-4 rounded border-input"
-                    checked={formData.isBundle}
-                    onChange={(e) => setFormData({ ...formData, isBundle: e.target.checked })}
-                  />
-                  <Label htmlFor="isBundle" className="font-normal cursor-pointer">
-                    Combo / paquete (p. ej. licores) — descuenta stock de los productos hijos al vender
-                  </Label>
-                </div>
-                {formData.isBundle && (
-                  <div className="grid gap-2">
-                    <Label htmlFor="bundleJson">Componentes (JSON)</Label>
-                    <textarea
-                      id="bundleJson"
-                      className="min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-xs font-mono"
-                      value={formData.bundleComponentsJson}
-                      onChange={(e) =>
-                        setFormData({ ...formData, bundleComponentsJson: e.target.value })
+                <div className="rounded-xl border border-border/80 bg-muted/25 p-4 space-y-3">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Tipo de ítem
+                  </p>
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      id="type-normal"
+                      type="radio"
+                      name="product-type"
+                      className="mt-1 h-4 w-4"
+                      checked={!formData.isBundle && !formData.isService}
+                      onChange={() =>
+                        setFormData((s) => ({ ...s, isBundle: false, isService: false, bundleLines: [] }))
                       }
-                      placeholder='[{"productId":12,"quantity":1},{"productId":15,"quantity":2}]'
                     />
-                    <p className="text-xs text-muted-foreground">
-                      IDs de productos existentes y cantidades por unidad de combo. El precio de venta es el del
-                      combo.
-                    </p>
-                  </div>
+                    <span className="text-sm leading-snug">
+                      <span className="font-medium">Producto de inventario</span> — stock propio, venta unitaria.
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      id="isBundle"
+                      type="radio"
+                      name="product-type"
+                      className="mt-1 h-4 w-4"
+                      checked={formData.isBundle}
+                      onChange={() =>
+                        setFormData((s) => ({
+                          ...s,
+                          isBundle: true,
+                          isService: false,
+                          bundleLines: s.bundleLines.length ? s.bundleLines : [],
+                        }))
+                      }
+                    />
+                    <span className="text-sm leading-snug">
+                      <span className="font-medium">Combo / paquete</span> — un solo precio; al vender se descuenta
+                      el inventario de cada componente.
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      id="isService"
+                      type="radio"
+                      name="product-type"
+                      className="mt-1 h-4 w-4"
+                      checked={formData.isService}
+                      onChange={() =>
+                        setFormData((s) => ({
+                          ...s,
+                          isService: true,
+                          isBundle: false,
+                          bundleLines: s.bundleLines,
+                        }))
+                      }
+                    />
+                    <span className="text-sm leading-snug">
+                      <span className="font-medium">Servicio</span> — cobro (descorche, cubierto, etc.). Sin stock
+                      del ítem; puedes vincular insumos opcionales abajo.
+                    </span>
+                  </label>
+                </div>
+                {(formData.isBundle || formData.isService) && (
+                  <BundleRecipeEditor
+                    variant={formData.isBundle ? 'combo' : 'service'}
+                    value={formData.bundleLines}
+                    onChange={(bundleLines) => setFormData((s) => ({ ...s, bundleLines }))}
+                    catalog={recipeCatalog}
+                    excludeProductId={editingProduct?.id ?? null}
+                  />
                 )}
               </div>
               <DialogFooter>
