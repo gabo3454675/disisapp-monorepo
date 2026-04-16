@@ -63,6 +63,17 @@ export class ProductsService {
 
     const { isBundle, bundleComponents, isService, ...productRest } = createProductDto;
     const bundle = isBundle ?? false;
+    const srv = bundle ? false : (isService ?? false);
+    const compsRaw = bundleComponents as unknown;
+    const compsArr = Array.isArray(compsRaw) ? compsRaw : [];
+    let storedComponents: object | undefined;
+    if (bundle) {
+      storedComponents = compsArr.length > 0 ? (compsRaw as object) : [];
+    } else if (srv && compsArr.length > 0) {
+      storedComponents = compsRaw as object;
+    } else {
+      storedComponents = undefined;
+    }
 
     return this.prisma.product.create({
       data: {
@@ -75,13 +86,8 @@ export class ProductsService {
         minStock: createProductDto.minStock ?? 5,
         salePriceCurrency: createProductDto.salePriceCurrency ?? 'USD',
         isBundle: bundle,
-        isService: bundle ? false : (isService ?? false),
-        bundleComponents:
-          bundle && bundleComponents != null
-            ? (bundleComponents as object)
-            : bundle
-              ? []
-              : undefined,
+        isService: srv,
+        bundleComponents: storedComponents,
       },
     });
   }
@@ -151,9 +157,25 @@ export class ProductsService {
 
     const nextBundle =
       updateProductDto.isBundle !== undefined ? updateProductDto.isBundle : existingProduct.isBundle;
+    const nextService =
+      updateProductDto.isService !== undefined
+        ? !!updateProductDto.isService
+        : !!(existingProduct as { isService?: boolean }).isService;
     const data: Record<string, unknown> = { ...(updateProductDto as object) } as Record<string, unknown>;
     if (nextBundle) {
       data.isService = false;
+    }
+
+    if (updateProductDto.bundleComponents !== undefined) {
+      const bc = updateProductDto.bundleComponents as unknown;
+      const arr = Array.isArray(bc) ? bc : [];
+      if (nextBundle) {
+        data.bundleComponents = arr.length > 0 ? bc : [];
+      } else if (nextService) {
+        data.bundleComponents = arr.length > 0 ? bc : null;
+      } else {
+        data.bundleComponents = null;
+      }
     }
 
     const updated = await this.prisma.product.update({

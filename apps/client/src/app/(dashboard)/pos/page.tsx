@@ -41,8 +41,12 @@ interface Product {
   minStock: number;
   isExempt?: boolean;
   isBundle?: boolean;
+  isService?: boolean;
   bundleComponents?: { productId: number; quantity: number }[] | null;
 }
+
+/** Servicio sin insumos: el backend no usa stock del ítem; el POS permite cantidad alta. */
+const SERVICE_POS_MAX_QTY = 999_999;
 
 type CurrencyMode = 'BS' | 'USD';
 type PaymentMethod = 'CASH_USD' | 'CASH_BS' | 'PAGO_MOVIL' | 'ZELLE' | 'CARD' | 'CREDIT';
@@ -182,12 +186,12 @@ export default function POSPage() {
     );
   }, [products, debouncedSearchQuery]);
 
-  /** Unidades de combo vendibles según stock de componentes (licores, etc.). */
-  const bundleSellableUnits = useCallback(
-    (product: Product): number => {
-      if (!product.isBundle || !product.bundleComponents?.length) return product.stock;
+  /** Máx. unidades según receta (combo o servicio con insumos). */
+  const sellableUnitsFromRecipe = useCallback(
+    (components: { productId: number; quantity: number }[] | null | undefined): number => {
+      if (!components?.length) return 0;
       let min = Infinity;
-      for (const comp of product.bundleComponents) {
+      for (const comp of components) {
         const child = products.find((p) => p.id === comp.productId);
         if (!child) return 0;
         const per = Math.max(1, comp.quantity ?? 1);
@@ -198,10 +202,26 @@ export default function POSPage() {
     [products],
   );
 
+  /** Unidades que se pueden vender en POS (producto sueltos, combos, servicios). */
+  const sellableUnits = useCallback(
+    (product: Product): number => {
+      if (product.isBundle) {
+        if (!product.bundleComponents?.length) return product.stock;
+        return sellableUnitsFromRecipe(product.bundleComponents);
+      }
+      if (product.isService) {
+        if (product.bundleComponents?.length) return sellableUnitsFromRecipe(product.bundleComponents);
+        return SERVICE_POS_MAX_QTY;
+      }
+      return product.stock;
+    },
+    [sellableUnitsFromRecipe],
+  );
+
   // Agregar producto al carrito
   const addToCart = (product: Product) => {
     setCart((prevCart) => {
-      const maxQ = product.isBundle ? bundleSellableUnits(product) : product.stock;
+      const maxQ = sellableUnits(product);
       const existingItem = prevCart.find((item) => item.product.id === product.id);
       if (existingItem) {
         if (existingItem.quantity >= maxQ) return prevCart;
@@ -224,9 +244,7 @@ export default function POSPage() {
           if (item.product.id === productId) {
             const newQuantity = item.quantity + delta;
             if (newQuantity <= 0) return null;
-            const maxQ = item.product.isBundle
-              ? bundleSellableUnits(item.product)
-              : item.product.stock;
+            const maxQ = sellableUnits(item.product);
             if (newQuantity > maxQ) return item;
             return { ...item, quantity: newQuantity };
           }
@@ -616,10 +634,7 @@ export default function POSPage() {
                       <Card
                         key={product.id}
                         className="cursor-pointer hover:border-primary transition-colors"
-                        onClick={() =>
-                          (product.isBundle ? bundleSellableUnits(product) : product.stock) > 0 &&
-                          addToCart(product)
-                        }
+                        onClick={() => sellableUnits(product) > 0 && addToCart(product)}
                       >
                         <CardContent className="p-4">
                           <div className="flex items-center justify-center mb-2">
@@ -631,19 +646,19 @@ export default function POSPage() {
                               {formatCurrency(getUnitPriceDisplay(product))}
                             </span>
                             <Badge
-                              variant={
-                                (product.isBundle ? bundleSellableUnits(product) : product.stock) > 0
-                                  ? 'default'
-                                  : 'destructive'
-                              }
+                              variant={sellableUnits(product) > 0 ? 'default' : 'destructive'}
                               className="text-xs"
                             >
                               {product.isBundle
-                                ? `Combo: ${bundleSellableUnits(product)}`
-                                : `Stock: ${product.stock}`}
+                                ? `Combo: ${sellableUnits(product)}`
+                                : product.isService
+                                  ? product.bundleComponents?.length
+                                    ? `Servicio: ${sellableUnits(product)}`
+                                    : 'Servicio'
+                                  : `Stock: ${product.stock}`}
                             </Badge>
                           </div>
-                          {(product.isBundle ? bundleSellableUnits(product) : product.stock) === 0 && (
+                          {sellableUnits(product) === 0 && (
                             <p className="text-xs text-destructive">Sin stock</p>
                           )}
                         </CardContent>
@@ -884,12 +899,7 @@ export default function POSPage() {
                               size="icon"
                               className="h-7 w-7"
                               onClick={() => updateQuantity(item.product.id, 1)}
-                              disabled={
-                                item.quantity >=
-                                (item.product.isBundle
-                                  ? bundleSellableUnits(item.product)
-                                  : item.product.stock)
-                              }
+                              disabled={item.quantity >= sellableUnits(item.product)}
                             >
                               <Plus className="h-3 w-3" />
                             </Button>

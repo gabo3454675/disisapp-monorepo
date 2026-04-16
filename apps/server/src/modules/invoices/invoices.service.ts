@@ -14,8 +14,7 @@ import { CreditsService } from '@/modules/credits/credits.service';
 
 const PDFDocument = (PDFKit as any).default ?? PDFKit;
 import { TasksService } from '@/modules/tasks/tasks.service';
-import { TaskPriority } from '@prisma/client';
-import { PaymentStatus } from '@prisma/client';
+import { TaskPriority, Product, PaymentStatus } from '@prisma/client';
 
 @Injectable()
 export class InvoicesService {
@@ -64,11 +63,14 @@ export class InvoicesService {
     });
     const allIdSet = new Set<number>(lineProductIds);
     for (const p of firstProducts) {
-      if (p.isBundle && p.bundleComponents != null) {
-        const comps = p.bundleComponents as unknown;
-        if (Array.isArray(comps)) {
-          for (const c of comps as { productId?: number }[]) {
-            if (c?.productId != null) allIdSet.add(c.productId);
+      const comps = p.bundleComponents as unknown;
+      if (Array.isArray(comps)) {
+        for (const c of comps as { productId?: number }[]) {
+          if (c?.productId == null) continue;
+          if (p.isBundle) {
+            allIdSet.add(c.productId);
+          } else if (p.isService) {
+            allIdSet.add(c.productId);
           }
         }
       }
@@ -109,31 +111,35 @@ export class InvoicesService {
         subtotal,
       });
 
-      if (product.isBundle && product.bundleComponents != null) {
-        const comps = product.bundleComponents as unknown;
-        if (!Array.isArray(comps) || comps.length === 0) {
+      const compsUnknown = product.bundleComponents as unknown;
+      const compsList =
+        Array.isArray(compsUnknown) && compsUnknown.length > 0
+          ? (compsUnknown as { productId: number; quantity: number }[])
+          : null;
+
+      if (product.isBundle) {
+        if (!compsList) {
           throw new BadRequestException(`El combo "${product.name}" no tiene componentes configurados`);
         }
-        for (const comp of comps as { productId: number; quantity: number }[]) {
-          const child = productById.get(comp.productId);
-          if (!child) {
-            throw new NotFoundException(`Componente de combo no encontrado: producto ${comp.productId}`);
-          }
-          const need = item.quantity * (comp.quantity ?? 1);
-          if (child.stock < need) {
-            throw new BadRequestException(
-              `Stock insuficiente para componente "${child.name}" del combo "${product.name}". Disponible: ${child.stock}, requerido: ${need}`,
-            );
-          }
-          stockUpdates.push(
-            this.prisma.product.update({
-              where: { id: child.id },
-              data: { stock: { decrement: need } },
-            }),
+        this.applyInvoiceBundleComponents(
+          compsList,
+          item.quantity,
+          product.name,
+          'combo',
+          productById,
+          stockUpdates,
+        );
+      } else if (product.isService) {
+        if (compsList) {
+          this.applyInvoiceBundleComponents(
+            compsList,
+            item.quantity,
+            product.name,
+            'servicio',
+            productById,
+            stockUpdates,
           );
         }
-      } else if (product.isService) {
-        // Servicio: no descuenta inventario del ítem (solo cobra en factura)
       } else {
         if (product.stock < item.quantity) {
           throw new BadRequestException(
@@ -332,6 +338,41 @@ export class InvoicesService {
         paymentLines: true,
       },
     })!;
+  }
+
+  /**
+   * Descuenta inventario de los productos hijos (misma lógica para combo y servicio con «receta»).
+   */
+  private applyInvoiceBundleComponents(
+    comps: { productId: number; quantity: number }[],
+    lineQty: number,
+    parentName: string,
+    kind: 'combo' | 'servicio',
+    productById: Map<number, Product>,
+    stockUpdates: ReturnType<PrismaService['product']['update']>[],
+  ) {
+    for (const comp of comps) {
+      const child = productById.get(comp.productId);
+      if (!child) {
+        throw new NotFoundException(
+          kind === 'combo'
+            ? `Componente de combo no encontrado: producto ${comp.productId}`
+            : `Producto incluido en el servicio no encontrado: ${comp.productId}`,
+        );
+      }
+      const need = lineQty * (comp.quantity ?? 1);
+      if (child.stock < need) {
+        throw new BadRequestException(
+          `Stock insuficiente para "${child.name}" (${kind === 'combo' ? 'componente del combo' : 'incluido en el servicio'}) "${parentName}". Disponible: ${child.stock}, requerido: ${need}`,
+        );
+      }
+      stockUpdates.push(
+        this.prisma.product.update({
+          where: { id: child.id },
+          data: { stock: { decrement: need } },
+        }),
+      );
+    }
   }
 
   async findAll(organizationId: number) {

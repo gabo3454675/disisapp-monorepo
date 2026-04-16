@@ -9,7 +9,7 @@ import { UpdateExpenseDto } from './dto/update-expense.dto';
 import { getCompanyIdFromOrganization } from '@/common/helpers/organization.helper';
 import type { PurchaseLineDto } from './dto/purchase-line.dto';
 import * as ExcelJS from 'exceljs';
-import { PDFParse } from 'pdf-parse';
+import pdfParse from 'pdf-parse';
 
 function num(v: unknown): number {
   if (v == null) return 0;
@@ -606,14 +606,10 @@ export class ExpensesService {
         });
       }
     } else {
-      const parser = new PDFParse({ data: new Uint8Array(file.buffer) });
-      let text = '';
-      try {
-        const tr = await parser.getText();
-        text = tr.text || '';
-      } finally {
-        await parser.destroy().catch(() => {});
-      }
+      // pdf-parse 1.x: ligero y compatible con Node 18 (v2/pdfjs en Render rompe process.getBuiltinModule)
+      const buf = Buffer.isBuffer(file.buffer) ? file.buffer : Buffer.from(file.buffer);
+      const pdfData = await pdfParse(buf);
+      const text = pdfData.text || '';
 
       const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
       let lineNo = 0;

@@ -48,7 +48,10 @@ export class CreateProductDto {
   @IsBoolean()
   isService?: boolean;
 
-  /** [{ "productId": number, "quantity": number }] — cantidades por unidad de combo */
+  /**
+   * [{ "productId": number, "quantity": number }] por unidad vendida.
+   * Combo: obligatorio. Servicio: opcional (descorche + hielo/jugo, etc.); si se omite o va vacío, solo cobra sin mover stock.
+   */
   @IsOptional()
   bundleComponents?: unknown;
 }

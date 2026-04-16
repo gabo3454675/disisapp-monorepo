@@ -90,6 +90,9 @@ export default function ServiciosCombosPage() {
     return products.filter((p) => p.isBundle || p.isService);
   }, [products]);
 
+  const recipeCount = (p: Product) =>
+    Array.isArray(p.bundleComponents) ? p.bundleComponents.length : 0;
+
   const filtered = useMemo(() => {
     if (!debouncedSearchQuery) return serviciosYCombos;
     const q = debouncedSearchQuery.toLowerCase();
@@ -115,7 +118,9 @@ export default function ServiciosCombosPage() {
         isService: !!product.isService && !product.isBundle,
         bundleComponentsJson: product.bundleComponents
           ? JSON.stringify(product.bundleComponents, null, 2)
-          : '[\n  { "productId": 0, "quantity": 1 }\n]',
+          : product.isBundle
+            ? '[\n  { "productId": 0, "quantity": 1 }\n]'
+            : '[]',
       });
     } else {
       setEditingProduct(null);
@@ -128,7 +133,7 @@ export default function ServiciosCombosPage() {
         costPrice: '',
         isBundle: false,
         isService: true,
-        bundleComponentsJson: '[\n  { "productId": 0, "quantity": 1 }\n]',
+        bundleComponentsJson: '[]',
       });
     }
     setIsDialogOpen(true);
@@ -161,6 +166,25 @@ export default function ServiciosCombosPage() {
           setSubmitting(false);
           return;
         }
+        if (!Array.isArray(bundleComponents)) {
+          alert('Los componentes del combo deben ser un arreglo [...]');
+          setSubmitting(false);
+          return;
+        }
+      } else if (formData.isService) {
+        try {
+          const raw = formData.bundleComponentsJson.trim() || '[]';
+          bundleComponents = JSON.parse(raw);
+        } catch {
+          alert('JSON de productos incluidos inválido. Use [] si no descuenta inventario.');
+          setSubmitting(false);
+          return;
+        }
+        if (!Array.isArray(bundleComponents)) {
+          alert('Debe ser un arreglo, p. ej. [{"productId":1,"quantity":1}]');
+          setSubmitting(false);
+          return;
+        }
       }
 
       const productData: Record<string, unknown> = {
@@ -176,9 +200,12 @@ export default function ServiciosCombosPage() {
 
       if (formData.isBundle) {
         productData.bundleComponents = bundleComponents;
+      } else if (formData.isService) {
+        productData.bundleComponents =
+          Array.isArray(bundleComponents) && bundleComponents.length > 0 ? bundleComponents : null;
       } else {
         productData.isBundle = false;
-        productData.bundleComponents = [];
+        productData.bundleComponents = null;
       }
 
       if (editingProduct) {
@@ -234,9 +261,10 @@ export default function ServiciosCombosPage() {
             Servicios y combos
           </h1>
           <p className="text-muted-foreground max-w-2xl">
-            Los <strong>combos</strong> descuentan del inventario los licores o productos que configures en JSON.
-            Los <strong>servicios</strong> cobran en factura sin descontar stock del ítem (ideal para cubiertos,
-            mesa, etc.).
+            <strong>Combo:</strong> precio del paquete y descuento obligatorio de componentes (JSON).{' '}
+            <strong>Servicio:</strong> cobras un precio (p. ej. descorche); el ítem servicio no tiene stock. Si
+            incluyes JSON opcional (hielo, jugo, refresco…), al vender se descuenta ese inventario igual que en un
+            combo.
           </p>
         </div>
         <Button onClick={() => handleOpenDialog()} className="shrink-0">
@@ -279,6 +307,7 @@ export default function ServiciosCombosPage() {
                   <TableRow>
                     <TableHead>Nombre</TableHead>
                     <TableHead>Tipo</TableHead>
+                    <TableHead className="hidden sm:table-cell">Insumos</TableHead>
                     <TableHead>Precio</TableHead>
                     <TableHead>SKU</TableHead>
                     <TableHead className="text-right">Acciones</TableHead>
@@ -291,9 +320,16 @@ export default function ServiciosCombosPage() {
                       <TableCell>
                         {p.isBundle ? (
                           <Badge variant="secondary">Combo</Badge>
+                        ) : recipeCount(p) > 0 ? (
+                          <Badge variant="outline" className="border-amber-600/50 text-amber-900 dark:text-amber-200">
+                            Servicio + insumos
+                          </Badge>
                         ) : (
                           <Badge variant="outline">Servicio</Badge>
                         )}
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell text-muted-foreground text-sm">
+                        {recipeCount(p) > 0 ? `${recipeCount(p)} ítem(s)` : '—'}
                       </TableCell>
                       <TableCell>{formatUsd(Number(p.salePrice))}</TableCell>
                       <TableCell className="text-muted-foreground">{p.sku || '—'}</TableCell>
@@ -321,8 +357,9 @@ export default function ServiciosCombosPage() {
           <DialogHeader>
             <DialogTitle>{editingProduct ? 'Editar' : 'Nuevo servicio o combo'}</DialogTitle>
             <DialogDescription>
-              Combo: indique los productId del inventario y cantidades por unidad vendida. Servicio: sin descuento
-              de stock del ítem.
+              Un mismo formato JSON sirve para combos (obligatorio) y para servicios con insumos (opcional):{' '}
+              <code className="text-xs">[&#123; &quot;productId&quot;: 1, &quot;quantity&quot;: 2 &#125;]</code>.
+              Cantidades son por unidad vendida del combo/servicio.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -401,7 +438,7 @@ export default function ServiciosCombosPage() {
                     }));
                   }}
                 />
-                <span className="text-sm">Es combo (descuenta componentes del inventario)</span>
+                <span className="text-sm">Combo — paquete con precio único; componentes obligatorios</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -418,13 +455,22 @@ export default function ServiciosCombosPage() {
                     }));
                   }}
                 />
-                <span className="text-sm">Es servicio (sin stock del ítem en ventas)</span>
+                <span className="text-sm">Servicio — cobro (descorche, cubierto…); insumos opcionales abajo</span>
               </label>
             </div>
 
-            {formData.isBundle && (
+            {(formData.isBundle || formData.isService) && (
               <div className="space-y-2">
-                <Label>Componentes (JSON)</Label>
+                <Label>
+                  {formData.isBundle
+                    ? 'Componentes del combo (JSON) *'
+                    : 'Productos de inventario incluidos (JSON, opcional)'}
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  {formData.isService
+                    ? 'Vacío [] = solo cobro, sin mover stock. Con IDs = descuenta hielo, jugo, botellas, etc.'
+                    : 'Lista de productId existentes en Inventario y cantidades por 1 unidad de combo.'}
+                </p>
                 <textarea
                   className="w-full min-h-[140px] rounded-md border border-input bg-background px-3 py-2 font-mono text-sm"
                   value={formData.bundleComponentsJson}
