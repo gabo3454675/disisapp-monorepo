@@ -9,6 +9,7 @@ import BottomNav from '@/components/bottom-nav';
 import { ExchangeRateIndicator } from '@/components/exchange-rate-indicator';
 import { DisplayCurrencyToggle } from '@/components/display-currency-toggle';
 import { TasksNotificationBell } from '@/components/tasks-notification-bell';
+import { NotificationFeedProvider } from '@/hooks/useNotificationFeed';
 import { RateConfigModal } from '@/components/rate-config-modal';
 import { PermissionDebug } from '@/components/permission-debug';
 import { PWAInstallPrompt } from '@/components/pwa-install-prompt';
@@ -64,6 +65,13 @@ export default function DashboardLayout({
     if (!mounted || !hasHydrated || !isAuthenticated || !selectedId) return;
     syncOrganizationRate();
   }, [mounted, hasHydrated, isAuthenticated, selectedId, syncOrganizationRate]);
+
+  /** Campanita / feed: abrir modal de tasa desde recordatorio */
+  useEffect(() => {
+    const openRate = () => setRateConfigModalOpen(true);
+    window.addEventListener('open-rate-config-modal', openRate);
+    return () => window.removeEventListener('open-rate-config-modal', openRate);
+  }, []);
 
   useEffect(() => {
     if (!isAuthenticated || !selectedId) return;
@@ -190,32 +198,34 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="flex flex-col lg:flex-row min-h-screen bg-background text-foreground">
-      {/* Desktop Sidebar */}
-      <Sidebar />
+    <NotificationFeedProvider>
+      <div className="flex flex-col lg:flex-row min-h-screen bg-background text-foreground">
+        {/* Desktop Sidebar */}
+        <Sidebar />
 
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col pb-24 lg:pb-0 min-w-0 overflow-x-hidden">
-        {/* Header: indicador de tasa + campanita de tareas */}
-        <header className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3 border-b border-border bg-background/95 px-3 py-2 sm:px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-          <TasksNotificationBell />
-          <DisplayCurrencyToggle className="shrink-0" short />
-          <ExchangeRateIndicator onOpenConfig={() => setRateConfigModalOpen(true)} className="shrink-0" />
-        </header>
-        <div className="flex-1 min-w-0 overflow-x-hidden">{children}</div>
-      </main>
+        {/* Main Content */}
+        <main className="flex-1 flex flex-col pb-24 lg:pb-0 min-w-0 overflow-x-hidden">
+          {/* Header: indicador de tasa + campanita de tareas */}
+          <header className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3 border-b border-border bg-background/95 px-3 py-2 sm:px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+            <TasksNotificationBell />
+            <DisplayCurrencyToggle className="shrink-0" short />
+            <ExchangeRateIndicator onOpenConfig={() => setRateConfigModalOpen(true)} className="shrink-0" />
+          </header>
+          <div className="flex-1 min-w-0 overflow-x-hidden">{children}</div>
+        </main>
 
-      {/* Modal de configuración de tasa (abierto desde el indicador) */}
-      <RateConfigModal open={rateConfigModalOpen} onOpenChange={setRateConfigModalOpen} />
+        {/* Modal de configuración de tasa (abierto desde el indicador o la campanita) */}
+        <RateConfigModal open={rateConfigModalOpen} onOpenChange={setRateConfigModalOpen} />
 
-      {/* Mobile Bottom Navigation */}
-      <BottomNav />
-      
-      {/* PWA Install Prompt */}
-      <PWAInstallPrompt />
-      
-      {/* Debug Component (solo en desarrollo) */}
-      <PermissionDebug />
-    </div>
+        {/* Mobile Bottom Navigation */}
+        <BottomNav />
+
+        {/* PWA Install Prompt */}
+        <PWAInstallPrompt />
+
+        {/* Debug Component (solo en desarrollo) */}
+        <PermissionDebug />
+      </div>
+    </NotificationFeedProvider>
   );
 }

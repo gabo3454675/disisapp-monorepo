@@ -1,54 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bell, CheckCircle2, AlertCircle, Clock, Loader2, ListTodo } from 'lucide-react';
+import { useCallback, useState } from 'react';
+import { Bell, CheckCircle2, AlertCircle, Clock, Loader2, ListTodo, Percent } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { TaskResolutionModal, type TaskForResolution } from '@/components/task-resolution-modal';
 import { InvoiceDetailSheet } from '@/components/invoice-detail-sheet';
-import apiClient from '@/lib/api';
-
-interface Notification {
-  id: number;
-  title: string;
-  description: string;
-  status: 'pending' | 'urgent' | 'completed';
-  time: string;
-  icon: 'clock' | 'alert' | 'check' | 'task';
-  type: 'task' | 'invoice' | 'stock';
-  task?: TaskForResolution;
-}
-
-type Invoice = {
-  id: number;
-  status: 'PENDING' | 'PAID' | 'CANCELLED' | string;
-  createdAt?: string;
-  customerName?: string;
-  totalAmount?: number;
-};
-
-type Product = {
-  id: number;
-  sku?: string | null;
-  name: string;
-  stock: number;
-  minStock?: number | null;
-  updatedAt?: string;
-};
-
-const timeAgo = (dateString?: string) => {
-  if (!dateString) return '—';
-  const date = new Date(dateString);
-  const diffMs = Date.now() - date.getTime();
-  const min = Math.floor(diffMs / 60000);
-  if (min < 1) return 'recién';
-  if (min < 60) return `hace ${min} min`;
-  const h = Math.floor(min / 60);
-  if (h < 24) return `hace ${h} h`;
-  const d = Math.floor(h / 24);
-  return `hace ${d} d`;
-};
+import { useNotificationFeed, type NotificationFeedItem } from '@/hooks/useNotificationFeed';
 
 const getStatusStyles = (status: string) => {
   switch (status) {
@@ -63,8 +22,8 @@ const getStatusStyles = (status: string) => {
   }
 };
 
-const getIcon = (iconType: string) => {
-  switch (iconType) {
+function SectionIcon({ item }: { item: NotificationFeedItem }) {
+  switch (item.icon) {
     case 'alert':
       return <AlertCircle className="h-5 w-5 text-red-400" />;
     case 'check':
@@ -72,49 +31,24 @@ const getIcon = (iconType: string) => {
     case 'task':
       return <ListTodo className="h-5 w-5 text-blue-400" />;
     case 'clock':
+      return item.kind === 'rate' ? (
+        <Percent className="h-5 w-5 text-amber-400" />
+      ) : (
+        <Clock className="h-5 w-5 text-yellow-400" />
+      );
     default:
       return <Clock className="h-5 w-5 text-yellow-400" />;
   }
-};
+}
 
 export default function NotificationsSection() {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [myTasks, setMyTasks] = useState<TaskForResolution[]>([]);
-  const [pendingInvoices, setPendingInvoices] = useState<Invoice[]>([]);
-  const [lowStockProducts, setLowStockProducts] = useState<Product[]>([]);
+  const { feedItems, loading, error, refetch } = useNotificationFeed();
   const [resolutionTask, setResolutionTask] = useState<TaskForResolution | null>(null);
   const [resolutionModalOpen, setResolutionModalOpen] = useState(false);
   const [detailInvoiceId, setDetailInvoiceId] = useState<number | null>(null);
   const [detailTaskId, setDetailTaskId] = useState<number | null>(null);
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
-
-  const loadData = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const [tasksRes, invoicesRes, productsRes] = await Promise.all([
-        apiClient.get<TaskForResolution[]>('/tasks/my-pending'),
-        apiClient.get<Invoice[]>('/dashboard/pending-invoices'),
-        apiClient.get<Product[]>('/dashboard/low-stock'),
-      ]);
-      setMyTasks(Array.isArray(tasksRes.data) ? tasksRes.data : []);
-      setPendingInvoices(Array.isArray(invoicesRes.data) ? invoicesRes.data : []);
-      setLowStockProducts(Array.isArray(productsRes.data) ? productsRes.data : []);
-    } catch (e: any) {
-      setError(e?.response?.data?.message || e?.message || 'Error al cargar alertas');
-      setMyTasks([]);
-      setPendingInvoices([]);
-      setLowStockProducts([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
 
   const handleVerFactura = useCallback((invoiceId: number, taskId: number) => {
     setDetailInvoiceId(invoiceId);
@@ -122,71 +56,23 @@ export default function NotificationsSection() {
     setDetailSheetOpen(true);
   }, []);
 
-  const notificationsData: Notification[] = useMemo(() => {
-    const items: Notification[] = [];
-
-    for (const task of myTasks) {
-      items.push({
-        id: Number(`0${task.id}`),
-        title: task.title,
-        description: task.description || (task.invoiceId ? `Factura #${task.invoiceId}` : 'Sin factura'),
-        status: task.priority === 'HIGH' ? 'urgent' : 'pending',
-        time: '—',
-        icon: 'task',
-        type: 'task',
-        task,
-      });
+  const handleRowClick = (item: NotificationFeedItem) => {
+    if (item.kind === 'empty') return;
+    if (item.kind === 'task' && item.task) {
+      setResolutionTask(item.task);
+      setResolutionModalOpen(true);
+      return;
     }
-
-    const sortedPending = [...pendingInvoices].sort((a, b) => {
-      const da = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const db = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-      return db - da;
-    });
-    for (const inv of sortedPending.slice(0, 3)) {
-      const customerName = inv.customerName || 'Cliente';
-      items.push({
-        id: Number(`1${inv.id}`),
-        title: `Factura #${inv.id} Pendiente`,
-        description: `Esperando pago de ${customerName}`,
-        status: 'pending',
-        time: timeAgo(inv.createdAt),
-        icon: 'clock',
-        type: 'invoice',
-      });
+    if (item.openRateModal) {
+      window.dispatchEvent(new Event('open-rate-config-modal'));
+      return;
     }
-
-    for (const p of lowStockProducts.slice(0, 3)) {
-      const skuLabel = p.sku ? `SKU ${p.sku}` : `Producto #${p.id}`;
-      items.push({
-        id: Number(`2${p.id}`),
-        title: 'Alerta de Stock Bajo',
-        description: `${skuLabel} • ${p.name} (stock: ${p.stock})`,
-        status: 'urgent',
-        time: 'revisar hoy',
-        icon: 'alert',
-        type: 'stock',
-      });
+    if (item.href) {
+      router.push(item.href);
     }
+  };
 
-    if (items.length === 0 && !loading && !error) {
-      items.push({
-        id: 999999,
-        title: 'Todo al día',
-        description: 'No hay tareas ni alertas pendientes',
-        status: 'completed',
-        time: '—',
-        icon: 'check',
-        type: 'invoice',
-      });
-    }
-
-    return items;
-  }, [myTasks, pendingInvoices, lowStockProducts, loading, error]);
-
-  const pendingCount = notificationsData.filter(
-    (n) => n.status === 'pending' || n.status === 'urgent',
-  ).length;
+  const pendingCount = feedItems.filter((n) => n.kind !== 'empty').length;
 
   return (
     <>
@@ -195,12 +81,12 @@ export default function NotificationsSection() {
           <div className="flex items-center gap-2">
             <Bell className="h-5 w-5 text-blue-400" />
             <div>
-              <CardTitle>Tareas Pendientes</CardTitle>
-              <CardDescription>Mis tareas y alertas</CardDescription>
+              <CardTitle>Tareas y alertas</CardTitle>
+              <CardDescription>Recordatorios del día y pendientes</CardDescription>
             </div>
           </div>
           <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
-            {pendingCount} tareas
+            {pendingCount} pendiente{pendingCount === 1 ? '' : 's'}
           </Badge>
         </CardHeader>
         <CardContent>
@@ -220,37 +106,30 @@ export default function NotificationsSection() {
           <div className="space-y-3">
             {!loading &&
               !error &&
-              notificationsData.map((notification) => (
+              feedItems.map((notification) => (
                 <div
                   key={notification.id}
-                  className="flex gap-4 p-4 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors border border-transparent hover:border-border/50 cursor-pointer"
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => {
-                    if (notification.type === 'task' && notification.task) {
-                      setResolutionTask(notification.task);
-                      setResolutionModalOpen(true);
-                    }
-                    if (notification.type === 'invoice') router.push('/invoices');
-                    if (notification.type === 'stock') router.push('/products');
-                  }}
+                  className={`flex gap-4 p-4 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors border border-transparent hover:border-border/50 ${
+                    notification.kind === 'empty' ? 'cursor-default' : 'cursor-pointer'
+                  }`}
+                  role={notification.kind === 'empty' ? undefined : 'button'}
+                  tabIndex={notification.kind === 'empty' ? undefined : 0}
+                  onClick={() => handleRowClick(notification)}
                   onKeyDown={(e) => {
+                    if (notification.kind === 'empty') return;
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
-                      if (notification.type === 'task' && notification.task) {
-                        setResolutionTask(notification.task);
-                        setResolutionModalOpen(true);
-                      }
-                      if (notification.type === 'invoice') router.push('/invoices');
-                      if (notification.type === 'stock') router.push('/products');
+                      handleRowClick(notification);
                     }
                   }}
                 >
-                  <div className="flex-shrink-0 pt-1">{getIcon(notification.icon)}</div>
+                  <div className="flex-shrink-0 pt-1">
+                    <SectionIcon item={notification} />
+                  </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-foreground text-sm">{notification.title}</p>
                     <p className="text-xs text-muted-foreground mt-1">{notification.description}</p>
-                    <p className="text-xs text-muted-foreground mt-2">{notification.time}</p>
+                    <p className="text-xs text-muted-foreground mt-2">{notification.timeLabel}</p>
                   </div>
                   <div className="flex-shrink-0">
                     <Badge
@@ -261,7 +140,7 @@ export default function NotificationsSection() {
                         ? 'Pendiente'
                         : notification.status === 'urgent'
                           ? 'Urgente'
-                          : 'Completado'}
+                          : 'Listo'}
                     </Badge>
                   </div>
                 </div>
@@ -274,7 +153,7 @@ export default function NotificationsSection() {
         task={resolutionTask}
         open={resolutionModalOpen}
         onOpenChange={setResolutionModalOpen}
-        onDone={loadData}
+        onDone={refetch}
         onVerFactura={handleVerFactura}
       />
 
@@ -283,7 +162,7 @@ export default function NotificationsSection() {
         open={detailSheetOpen}
         onOpenChange={setDetailSheetOpen}
         taskId={detailTaskId}
-        onRefresh={loadData}
+        onRefresh={refetch}
       />
     </>
   );

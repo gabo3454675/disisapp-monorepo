@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { useDebounce } from '@/hooks/useDebounce';
 import {
@@ -51,6 +52,8 @@ interface Invoice {
 }
 
 export default function InvoicesPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { selectedCompanyId, user } = useAuthStore();
   const { canManageCustomers } = usePermission();
   const { formatForDisplay } = useDisplayCurrency();
@@ -64,6 +67,17 @@ export default function InvoicesPage() {
   const [assignModalInvoiceId, setAssignModalInvoiceId] = useState<number | null>(null);
 
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
+
+  /** Deep link desde campanita: /invoices?detalle=ID */
+  useEffect(() => {
+    const raw = searchParams.get('detalle');
+    if (!raw) return;
+    const id = parseInt(raw, 10);
+    if (!Number.isFinite(id) || id < 1) return;
+    setDetailInvoiceId(id);
+    setDetailSheetOpen(true);
+    router.replace('/invoices', { scroll: false });
+  }, [searchParams, router]);
 
   const fetchInvoices = useCallback(async () => {
     if (!selectedCompanyId) return;

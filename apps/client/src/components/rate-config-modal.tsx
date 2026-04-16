@@ -62,6 +62,9 @@ export function RateConfigModal({ open, onOpenChange }: RateConfigModalProps) {
       toast.success('Tasa actualizada para toda la organización', {
         description: 'Todos los usuarios verán la nueva tasa al recargar o al volver a la app. Se registró quién la actualizó.',
       });
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('organization-rate-updated'));
+      }
       onOpenChange(false);
     } catch (err: any) {
       const msg = err?.response?.data?.message || err?.message || 'Error al guardar la tasa';
