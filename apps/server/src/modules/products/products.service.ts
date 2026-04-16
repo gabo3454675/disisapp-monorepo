@@ -61,7 +61,8 @@ export class ProductsService {
     // Obtener companyId correspondiente a la organización
     const companyId = await getCompanyIdFromOrganization(this.prisma, organizationId);
 
-    const { isBundle, bundleComponents, ...productRest } = createProductDto;
+    const { isBundle, bundleComponents, isService, ...productRest } = createProductDto;
+    const bundle = isBundle ?? false;
 
     return this.prisma.product.create({
       data: {
@@ -73,11 +74,12 @@ export class ProductsService {
         stock: createProductDto.stock ?? 0,
         minStock: createProductDto.minStock ?? 5,
         salePriceCurrency: createProductDto.salePriceCurrency ?? 'USD',
-        isBundle: isBundle ?? false,
+        isBundle: bundle,
+        isService: bundle ? false : (isService ?? false),
         bundleComponents:
-          isBundle && bundleComponents != null
+          bundle && bundleComponents != null
             ? (bundleComponents as object)
-            : isBundle
+            : bundle
               ? []
               : undefined,
       },
@@ -147,9 +149,16 @@ export class ProductsService {
       }
     }
 
+    const nextBundle =
+      updateProductDto.isBundle !== undefined ? updateProductDto.isBundle : existingProduct.isBundle;
+    const data: Record<string, unknown> = { ...(updateProductDto as object) } as Record<string, unknown>;
+    if (nextBundle) {
+      data.isService = false;
+    }
+
     const updated = await this.prisma.product.update({
       where: { id },
-      data: updateProductDto as any,
+      data: data as any,
     });
 
     // Alertas: si el stock quedó por debajo del mínimo, notificar a Super Admins

@@ -28,7 +28,7 @@ import {
   TabsTrigger,
 } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Plus, Edit, Trash2, Search, Loader2, DollarSign, TrendingDown, Package, Briefcase } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Loader2, DollarSign, TrendingDown, Package, Briefcase, FileSpreadsheet, Upload, Download } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import apiClient from '@/lib/api';
 import { useDisplayCurrency } from '@/hooks/useDisplayCurrency';
@@ -94,6 +94,22 @@ interface CatalogProduct {
   name: string;
 }
 
+interface PurchaseImportPreview {
+  dryRun: true;
+  totalAmount: number;
+  lines: Array<{
+    productId: number;
+    name: string;
+    sku: string | null;
+    quantity: number;
+    unitCostUsd: number;
+    lineTotal: number;
+  }>;
+  errors: Array<{ row?: number; line?: number; message: string }>;
+  unmatched: Array<{ row?: number; line?: number; code: string; reason: string }>;
+  canConfirm: boolean;
+}
+
 export default function ExpensesPage() {
   const searchParams = useSearchParams();
   const { selectedCompanyId } = useAuthStore();
@@ -116,6 +132,17 @@ export default function ExpensesPage() {
   const [purchaseLines, setPurchaseLines] = useState<
     { productId: string; quantity: string; unitCostUsd: string }[]
   >([{ productId: '', quantity: '1', unitCostUsd: '' }]);
+
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importPreview, setImportPreview] = useState<PurchaseImportPreview | null>(null);
+  const [importSubmitting, setImportSubmitting] = useState(false);
+  const [importMeta, setImportMeta] = useState({
+    date: new Date().toISOString().split('T')[0],
+    supplierId: '',
+    referenceNumber: '',
+    description: '',
+    initialPayment: '',
+  });
 
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const { formatForDisplay } = useDisplayCurrency();
@@ -220,7 +247,32 @@ export default function ExpensesPage() {
   useEffect(() => {
     const t = searchParams.get('tab');
     if (t === 'suppliers') setActiveTab('suppliers');
+    if (t === 'import') setActiveTab('import');
   }, [searchParams]);
+
+  const handleDownloadPurchaseTemplate = useCallback(async () => {
+    try {
+      const response = await apiClient.get('/expenses/purchase-invoice-template', {
+        responseType: 'blob',
+      });
+      const blob = new Blob([response.data], {
+        type:
+          response.headers?.['content-type'] ||
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'factura-compra-plantilla.xlsx';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } } };
+      alert(err.response?.data?.message || 'No se pudo descargar la plantilla');
+    }
+  }, []);
 
   // useMemo debe estar antes del return condicional
   const filteredExpenses = useMemo(() => {
@@ -424,6 +476,55 @@ export default function ExpensesPage() {
     }
   };
 
+  const runPurchaseImportPreview = async () => {
+    if (!importFile) {
+      alert('Selecciona un archivo Excel (.xlsx) o PDF');
+      return;
+    }
+    setImportSubmitting(true);
+    setImportPreview(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', importFile);
+      fd.append('confirm', 'false');
+      const res = await apiClient.post<PurchaseImportPreview>('/expenses/import-purchase', fd);
+      setImportPreview(res.data);
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } } };
+      alert(err.response?.data?.message || 'Error al leer el archivo');
+    } finally {
+      setImportSubmitting(false);
+    }
+  };
+
+  const confirmPurchaseImport = async () => {
+    if (!importFile || !importPreview?.canConfirm) return;
+    setImportSubmitting(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', importFile);
+      fd.append('confirm', 'true');
+      fd.append('date', importMeta.date);
+      if (importMeta.supplierId) fd.append('supplierId', importMeta.supplierId);
+      if (importMeta.referenceNumber.trim()) fd.append('referenceNumber', importMeta.referenceNumber.trim());
+      if (importMeta.description.trim()) fd.append('description', importMeta.description.trim());
+      if (importMeta.initialPayment.trim()) {
+        const ip = parseFloat(importMeta.initialPayment);
+        if (Number.isFinite(ip) && ip > 0) fd.append('initialPayment', String(ip));
+      }
+      await apiClient.post('/expenses/import-purchase', fd);
+      alert('Factura de compra registrada y stock actualizado');
+      setImportFile(null);
+      setImportPreview(null);
+      fetchExpenses();
+      fetchStats();
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } } };
+      alert(err.response?.data?.message || 'Error al registrar la compra');
+    } finally {
+      setImportSubmitting(false);
+    }
+  };
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('es-VE', {
@@ -503,8 +604,9 @@ export default function ExpensesPage() {
 
         {/* Tabs para Gastos y Proveedores */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList>
+          <TabsList className="flex flex-wrap h-auto gap-1">
             <TabsTrigger value="expenses">Gastos</TabsTrigger>
+            <TabsTrigger value="import">Importar factura</TabsTrigger>
             <TabsTrigger value="suppliers">Proveedores</TabsTrigger>
           </TabsList>
 
@@ -604,6 +706,184 @@ export default function ExpensesPage() {
                         ))}
                       </TableBody>
                     </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="import" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileSpreadsheet className="h-5 w-5" />
+                  Importar factura de compra
+                </CardTitle>
+                <CardDescription>
+                  Sube un Excel con columnas de código (SKU o código de barras), cantidad y costo unitario USD, o un
+                  PDF con una línea por ítem: <code className="text-xs bg-muted px-1 rounded">CODIGO CANTIDAD COSTO</code>.
+                  Se creará un gasto en categoría Inventario, movimientos de compra y se actualizará el stock.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={handleDownloadPurchaseTemplate}>
+                    <Download className="mr-2 h-4 w-4" />
+                    Descargar plantilla Excel
+                  </Button>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Archivo (.xlsx, .xls o .pdf)</Label>
+                    <Input
+                      type="file"
+                      accept=".xlsx,.xls,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/pdf"
+                      onChange={(e) => {
+                        setImportPreview(null);
+                        setImportFile(e.target.files?.[0] ?? null);
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Fecha del gasto</Label>
+                    <Input
+                      type="date"
+                      value={importMeta.date}
+                      onChange={(e) => setImportMeta((m) => ({ ...m, date: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Proveedor (opcional)</Label>
+                    <select
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                      value={importMeta.supplierId}
+                      onChange={(e) => setImportMeta((m) => ({ ...m, supplierId: e.target.value }))}
+                    >
+                      <option value="">—</option>
+                      {suppliers.map((s) => (
+                        <option key={s.id} value={String(s.id)}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Referencia / N° factura (opcional)</Label>
+                    <Input
+                      value={importMeta.referenceNumber}
+                      onChange={(e) => setImportMeta((m) => ({ ...m, referenceNumber: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Descripción (opcional; si vacía se genera automática)</Label>
+                    <Input
+                      value={importMeta.description}
+                      onChange={(e) => setImportMeta((m) => ({ ...m, description: e.target.value }))}
+                      placeholder="Ej: Compra Diageo abril"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Abono inicial USD (opcional)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={importMeta.initialPayment}
+                      onChange={(e) => setImportMeta((m) => ({ ...m, initialPayment: e.target.value }))}
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={runPurchaseImportPreview}
+                    disabled={importSubmitting || !importFile}
+                  >
+                    {importSubmitting ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Upload className="mr-2 h-4 w-4" />
+                    )}
+                    Vista previa
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={confirmPurchaseImport}
+                    disabled={importSubmitting || !importPreview?.canConfirm}
+                  >
+                    Registrar compra
+                  </Button>
+                </div>
+
+                {importPreview && (
+                  <div className="space-y-4 rounded-lg border p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="font-semibold">
+                        Total estimado: {formatForDisplay(importPreview.totalAmount)}
+                      </p>
+                      {!importPreview.canConfirm && (
+                        <span className="text-sm text-destructive">
+                          Corrija errores antes de confirmar
+                        </span>
+                      )}
+                    </div>
+                    {importPreview.lines.length > 0 && (
+                      <div className="overflow-x-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Producto</TableHead>
+                              <TableHead>SKU</TableHead>
+                              <TableHead className="text-right">Cant.</TableHead>
+                              <TableHead className="text-right">Costo u.</TableHead>
+                              <TableHead className="text-right">Subtotal</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {importPreview.lines.map((line) => (
+                              <TableRow key={line.productId}>
+                                <TableCell>{line.name}</TableCell>
+                                <TableCell className="text-muted-foreground">{line.sku || '—'}</TableCell>
+                                <TableCell className="text-right">{line.quantity}</TableCell>
+                                <TableCell className="text-right">{formatForDisplay(line.unitCostUsd)}</TableCell>
+                                <TableCell className="text-right">{formatForDisplay(line.lineTotal)}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                    {importPreview.errors.length > 0 && (
+                      <div>
+                        <p className="text-sm font-medium text-destructive mb-2">Errores</p>
+                        <ul className="list-disc pl-5 text-sm space-y-1">
+                          {importPreview.errors.map((err, i) => (
+                            <li key={i}>
+                              {err.row != null && `Fila ${err.row}: `}
+                              {err.line != null && `Línea PDF ${err.line}: `}
+                              {err.message}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {importPreview.unmatched.length > 0 && (
+                      <div>
+                        <p className="text-sm font-medium text-amber-700 dark:text-amber-400 mb-2">
+                          Códigos no reconocidos o no aplicables
+                        </p>
+                        <ul className="list-disc pl-5 text-sm space-y-1">
+                          {importPreview.unmatched.map((u, i) => (
+                            <li key={i}>
+                              {u.code}: {u.reason}
+                              {u.row != null && ` (fila ${u.row})`}
+                              {u.line != null && ` (línea PDF ${u.line})`}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
                 )}
               </CardContent>

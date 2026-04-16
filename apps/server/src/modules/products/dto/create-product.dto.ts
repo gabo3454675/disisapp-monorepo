@@ -43,6 +43,11 @@ export class CreateProductDto {
   @IsBoolean()
   isBundle?: boolean;
 
+  /** Venta sin descuento de stock del ítem (p. ej. servicio en bar). No aplica si isBundle es true. */
+  @IsOptional()
+  @IsBoolean()
+  isService?: boolean;
+
   /** [{ "productId": number, "quantity": number }] — cantidades por unidad de combo */
   @IsOptional()
   bundleComponents?: unknown;

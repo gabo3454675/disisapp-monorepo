@@ -132,6 +132,8 @@ export class InvoicesService {
             }),
           );
         }
+      } else if (product.isService) {
+        // Servicio: no descuenta inventario del ítem (solo cobra en factura)
       } else {
         if (product.stock < item.quantity) {
           throw new BadRequestException(

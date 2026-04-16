@@ -43,5 +43,9 @@ export class UpdateProductDto {
   isBundle?: boolean;
 
   @IsOptional()
+  @IsBoolean()
+  isService?: boolean;
+
+  @IsOptional()
   bundleComponents?: unknown;
 }
