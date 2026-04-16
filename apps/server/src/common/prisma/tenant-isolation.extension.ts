@@ -24,6 +24,7 @@ const MODELS_WITH_ORGANIZATION_ID = new Set<string>([
   'AuditLog',
   'TasaHistorica',
   'ActivityLog',
+  'ExpensePayment',
 ]);
 
 function getTenantFieldForModel(model: string): 'tenantId' | 'organizationId' | null {

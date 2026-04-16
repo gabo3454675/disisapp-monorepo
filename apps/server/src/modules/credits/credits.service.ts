@@ -39,10 +39,10 @@ export class CreditsService {
         data: {
           customerId,
           organizationId,
-          limitAmount: 0,
+          limitAmount: 50,
           currentBalance: 0,
           status: CreditStatus.ACTIVE,
-          creditDueDays: 30,
+          creditDueDays: 8,
         },
         include: { customer: true },
       });

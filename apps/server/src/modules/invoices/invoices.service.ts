@@ -58,13 +58,28 @@ export class InvoicesService {
       },
     });
 
-    // Cargar productos de la organización y validar stock
-    const productIds = items.map((item) => item.productId);
-    const products = await this.prisma.product.findMany({
-      where: { id: { in: productIds }, organizationId },
+    const lineProductIds = items.map((item) => item.productId);
+    const firstProducts = await this.prisma.product.findMany({
+      where: { id: { in: lineProductIds }, organizationId },
     });
+    const allIdSet = new Set<number>(lineProductIds);
+    for (const p of firstProducts) {
+      if (p.isBundle && p.bundleComponents != null) {
+        const comps = p.bundleComponents as unknown;
+        if (Array.isArray(comps)) {
+          for (const c of comps as { productId?: number }[]) {
+            if (c?.productId != null) allIdSet.add(c.productId);
+          }
+        }
+      }
+    }
 
-    if (products.length !== productIds.length) {
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: [...allIdSet] }, organizationId },
+    });
+    const productById = new Map(products.map((p) => [p.id, p]));
+
+    if (products.length !== allIdSet.size) {
       throw new NotFoundException('Uno o más productos no fueron encontrados');
     }
 
@@ -78,14 +93,9 @@ export class InvoicesService {
     const stockUpdates: ReturnType<PrismaService['product']['update']>[] = [];
 
     for (const item of items) {
-      const product = products.find((p) => p.id === item.productId);
+      const product = productById.get(item.productId);
       if (!product) {
         throw new NotFoundException(`Producto con ID ${item.productId} no encontrado`);
-      }
-      if (product.stock < item.quantity) {
-        throw new BadRequestException(
-          `Stock insuficiente para ${product.name}. Disponible: ${product.stock}, Solicitado: ${item.quantity}`,
-        );
       }
 
       const unitPrice = Number(product.salePrice);
@@ -99,13 +109,42 @@ export class InvoicesService {
         subtotal,
       });
 
-      // Preparamos el update de stock para ejecutarlo en una transacción por lote
-      stockUpdates.push(
-        this.prisma.product.update({
-          where: { id: product.id },
-          data: { stock: { decrement: item.quantity } },
-        }),
-      );
+      if (product.isBundle && product.bundleComponents != null) {
+        const comps = product.bundleComponents as unknown;
+        if (!Array.isArray(comps) || comps.length === 0) {
+          throw new BadRequestException(`El combo "${product.name}" no tiene componentes configurados`);
+        }
+        for (const comp of comps as { productId: number; quantity: number }[]) {
+          const child = productById.get(comp.productId);
+          if (!child) {
+            throw new NotFoundException(`Componente de combo no encontrado: producto ${comp.productId}`);
+          }
+          const need = item.quantity * (comp.quantity ?? 1);
+          if (child.stock < need) {
+            throw new BadRequestException(
+              `Stock insuficiente para componente "${child.name}" del combo "${product.name}". Disponible: ${child.stock}, requerido: ${need}`,
+            );
+          }
+          stockUpdates.push(
+            this.prisma.product.update({
+              where: { id: child.id },
+              data: { stock: { decrement: need } },
+            }),
+          );
+        }
+      } else {
+        if (product.stock < item.quantity) {
+          throw new BadRequestException(
+            `Stock insuficiente para ${product.name}. Disponible: ${product.stock}, Solicitado: ${item.quantity}`,
+          );
+        }
+        stockUpdates.push(
+          this.prisma.product.update({
+            where: { id: product.id },
+            data: { stock: { decrement: item.quantity } },
+          }),
+        );
+      }
     }
 
     if (isCredit) {
@@ -766,8 +805,8 @@ export class InvoicesService {
         if (company?.taxId) doc.text(`RIF: ${String(company.taxId).slice(0, 30)}`, 50, 85);
         if (company?.address) doc.text(String(company.address).slice(0, 80), 50, 98);
 
-        // Factura (derecha)
-        doc.fontSize(16).fillColor(primary).text('FACTURA', 350, 50, { align: 'right' });
+        // Documento de venta (derecha) — alineado con ticket térmico "venta"
+        doc.fontSize(16).fillColor(primary).text('VENTA', 350, 50, { align: 'right' });
         let dateStr = '';
         try {
           dateStr = new Date(invoice.createdAt).toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' });

@@ -28,6 +28,7 @@ import { useAuthStore } from '@/store/useAuthStore';
 import { useDebounce } from '@/hooks/useDebounce';
 import { usePermission } from '@/hooks/usePermission';
 import { StockAdjustSheet } from '@/components/stock-adjust-sheet';
+import { Badge } from '@/components/ui/badge';
 
 type SalePriceCurrency = 'USD' | 'VES';
 
@@ -44,6 +45,8 @@ interface Product {
   minStock: number;
   imageUrl?: string | null;
   isExempt?: boolean;
+  isBundle?: boolean;
+  bundleComponents?: unknown;
 }
 
 export default function ProductsPage() {
@@ -63,6 +66,8 @@ export default function ProductsPage() {
     costPrice: '',
     stock: '',
     minStock: '5',
+    isBundle: false,
+    bundleComponentsJson: '[\n  { "productId": 0, "quantity": 1 }\n]',
   });
   const [submitting, setSubmitting] = useState(false);
   const [stockSheetOpen, setStockSheetOpen] = useState(false);
@@ -147,6 +152,10 @@ export default function ProductsPage() {
         costPrice: product.costPrice.toString(),
         stock: product.stock.toString(),
         minStock: product.minStock.toString(),
+        isBundle: !!product.isBundle,
+        bundleComponentsJson: product.bundleComponents
+          ? JSON.stringify(product.bundleComponents, null, 2)
+          : '[\n  { "productId": 0, "quantity": 1 }\n]',
       });
     } else {
       setEditingProduct(null);
@@ -159,6 +168,8 @@ export default function ProductsPage() {
         costPrice: '',
         stock: '',
         minStock: '5',
+        isBundle: false,
+        bundleComponentsJson: '[\n  { "productId": 0, "quantity": 1 }\n]',
       });
     }
     setIsDialogOpen(true);
@@ -176,6 +187,8 @@ export default function ProductsPage() {
       costPrice: '',
       stock: '',
       minStock: '5',
+      isBundle: false,
+      bundleComponentsJson: '[\n  { "productId": 0, "quantity": 1 }\n]',
     });
   };
 
@@ -190,7 +203,18 @@ export default function ProductsPage() {
     setSubmitting(true);
 
     try {
-      const productData = {
+      let bundleComponents: unknown = undefined;
+      if (formData.isBundle) {
+        try {
+          bundleComponents = JSON.parse(formData.bundleComponentsJson);
+        } catch {
+          alert('JSON de combo inválido. Use el formato: [{"productId":1,"quantity":2}]');
+          setSubmitting(false);
+          return;
+        }
+      }
+
+      const productData: Record<string, unknown> = {
         name: formData.name,
         sku: formData.sku || undefined,
         barcode: formData.barcode || undefined,
@@ -199,7 +223,14 @@ export default function ProductsPage() {
         costPrice: formData.costPrice ? parseFloat(formData.costPrice) : undefined,
         stock: formData.stock ? parseInt(formData.stock) : undefined,
         minStock: formData.minStock ? parseInt(formData.minStock) : undefined,
+        isBundle: formData.isBundle,
       };
+      if (formData.isBundle) {
+        productData.bundleComponents = bundleComponents;
+      } else {
+        productData.isBundle = false;
+        productData.bundleComponents = [];
+      }
 
       if (editingProduct) {
         await apiClient.patch(`/products/${editingProduct.id}`, productData);
@@ -529,6 +560,7 @@ export default function ProductsPage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Nombre</TableHead>
+                        <TableHead>Tipo</TableHead>
                         <TableHead>Precio</TableHead>
                         <TableHead>Stock</TableHead>
                         <TableHead>Código de Barras</TableHead>
@@ -539,6 +571,13 @@ export default function ProductsPage() {
                       {filteredProducts.map((product) => (
                         <TableRow key={product.id}>
                           <TableCell className="font-medium">{product.name}</TableCell>
+                          <TableCell>
+                            {product.isBundle ? (
+                              <Badge variant="secondary">Combo</Badge>
+                            ) : (
+                              <span className="text-muted-foreground text-sm">—</span>
+                            )}
+                          </TableCell>
                           <TableCell>{formatCurrency(Number(product.salePrice))}</TableCell>
                           <TableCell>{product.stock}</TableCell>
                           <TableCell>{product.barcode || '-'}</TableCell>
@@ -697,6 +736,36 @@ export default function ProductsPage() {
                     />
                   </div>
                 </div>
+                <div className="flex items-center gap-2 pt-2">
+                  <input
+                    id="isBundle"
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-input"
+                    checked={formData.isBundle}
+                    onChange={(e) => setFormData({ ...formData, isBundle: e.target.checked })}
+                  />
+                  <Label htmlFor="isBundle" className="font-normal cursor-pointer">
+                    Combo / paquete (p. ej. licores) — descuenta stock de los productos hijos al vender
+                  </Label>
+                </div>
+                {formData.isBundle && (
+                  <div className="grid gap-2">
+                    <Label htmlFor="bundleJson">Componentes (JSON)</Label>
+                    <textarea
+                      id="bundleJson"
+                      className="min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-xs font-mono"
+                      value={formData.bundleComponentsJson}
+                      onChange={(e) =>
+                        setFormData({ ...formData, bundleComponentsJson: e.target.value })
+                      }
+                      placeholder='[{"productId":12,"quantity":1},{"productId":15,"quantity":2}]'
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      IDs de productos existentes y cantidades por unidad de combo. El precio de venta es el del
+                      combo.
+                    </p>
+                  </div>
+                )}
               </div>
               <DialogFooter>
                 <Button

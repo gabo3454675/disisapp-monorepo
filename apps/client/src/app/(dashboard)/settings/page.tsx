@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Loader2, Trash2, Users, AlertTriangle, Package } from 'lucide-react';
+import { Loader2, Trash2, Users, AlertTriangle, Package, CreditCard } from 'lucide-react';
 import apiClient, { invoiceService } from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
 
@@ -81,6 +81,22 @@ export default function SettingsPage() {
       </div>
 
       <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5" />
+              Modalidades de pago (POS)
+            </CardTitle>
+            <CardDescription>
+              En el punto de venta puede cobrar en efectivo (USD o Bs), Pago Móvil, Zelle, tarjeta o crédito de
+              cliente. Las etiquetas mostradas al cajero están en{' '}
+              <span className="font-mono text-xs">POS → Modalidades de pago</span>. Crédito: límite por defecto al
+              activar cuenta <span className="font-mono">50 USD</span> y plazo{' '}
+              <span className="font-mono">8 días</span> (ajustables en Cuentas por Cobrar).
+            </CardDescription>
+          </CardHeader>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">

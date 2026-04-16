@@ -28,6 +28,7 @@ import { CierreCajaModule } from './modules/cierre-caja/cierre-caja.module';
 import { ActivityLogModule } from './modules/activity-log/activity-log.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AuditoriaModule } from './common/auditoria/auditoria.module';
+import { DispatchModule } from './modules/dispatch/dispatch.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { AuditoriaModule } from './common/auditoria/auditoria.module';
     ActivityLogModule,
     NotificationsModule,
     AuditoriaModule,
+    DispatchModule,
   ],
   controllers: [AppController],
   providers: [

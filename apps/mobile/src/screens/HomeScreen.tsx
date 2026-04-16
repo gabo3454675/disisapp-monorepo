@@ -1,9 +1,11 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
+import { useNavigation } from '@react-navigation/native';
 
 export function HomeScreen() {
   const { user, clearAuth } = useAuth();
+  const navigation = useNavigation<any>();
 
   return (
     <View style={styles.container}>
@@ -13,6 +15,9 @@ export function HomeScreen() {
       <Text style={styles.info}>
         Sesión persistente: no expira por inactividad. Solo se cierra al cerrar sesión o si el token es inválido.
       </Text>
+      <TouchableOpacity style={styles.walletButton} onPress={() => navigation.navigate('ClientWallet')}>
+        <Text style={styles.walletText}>Abrir Monedero Cliente</Text>
+      </TouchableOpacity>
       <TouchableOpacity style={styles.logoutButton} onPress={clearAuth}>
         <Text style={styles.logoutText}>Cerrar sesión</Text>
       </TouchableOpacity>
@@ -48,6 +53,19 @@ const styles = StyleSheet.create({
   },
   logoutText: {
     color: '#dc2626',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  walletButton: {
+    alignSelf: 'flex-start',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    backgroundColor: '#dbeafe',
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  walletText: {
+    color: '#1d4ed8',
     fontSize: 16,
     fontWeight: '600',
   },

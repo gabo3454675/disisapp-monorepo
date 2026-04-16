@@ -5,11 +5,22 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ShoppingCart, Plus, Minus, Trash2, Search, Package, CheckCircle2, Loader2, Printer } from 'lucide-react';
+import {
+  ShoppingCart,
+  Plus,
+  Minus,
+  Trash2,
+  Search,
+  Package,
+  CheckCircle2,
+  Loader2,
+  Printer,
+} from 'lucide-react';
 import apiClient, { invoiceService } from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePermission } from '@/hooks/usePermission';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useExchangeRate } from '@/hooks/useExchangeRate';
 import { db } from '@/lib/db';
@@ -29,10 +40,23 @@ interface Product {
   imageUrl?: string | null;
   minStock: number;
   isExempt?: boolean;
+  isBundle?: boolean;
+  bundleComponents?: { productId: number; quantity: number }[] | null;
 }
 
 type CurrencyMode = 'BS' | 'USD';
 type PaymentMethod = 'CASH_USD' | 'CASH_BS' | 'PAGO_MOVIL' | 'ZELLE' | 'CARD' | 'CREDIT';
+
+const BS_PAYMENT_METHODS: PaymentMethod[] = ['CASH_BS', 'PAGO_MOVIL'];
+
+const PAYMENT_LABELS: Record<PaymentMethod, string> = {
+  CASH_USD: 'Efectivo USD',
+  CASH_BS: 'Efectivo Bs',
+  PAGO_MOVIL: 'Pago Móvil',
+  ZELLE: 'Zelle',
+  CARD: 'Tarjeta',
+  CREDIT: 'Crédito',
+};
 
 interface Customer {
   id: number;
@@ -57,7 +81,9 @@ interface TicketSummary {
   totalUsd: number;
   totalBs: number;
   currencyMode: CurrencyMode;
-  paymentMethod: PaymentMethod;
+  paymentMethod: PaymentMethod | 'MIXED';
+  /** Texto multilínea para ticket cuando hay pago combinado */
+  paymentDetail?: string;
 }
 
 export default function POSPage() {
@@ -78,6 +104,12 @@ export default function POSPage() {
   const [lastTicket, setLastTicket] = useState<TicketSummary | null>(null);
   const [currencyMode, setCurrencyMode] = useState<CurrencyMode>('USD');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH_USD');
+  /** Varios medios en un solo cobro (ej. parte en $ y parte en pago móvil Bs). */
+  const [splitPayment, setSplitPayment] = useState(false);
+  const [splitLines, setSplitLines] = useState<Array<{ method: PaymentMethod; amount: string }>>([
+    { method: 'CASH_USD', amount: '' },
+    { method: 'PAGO_MOVIL', amount: '' },
+  ]);
   const [customerCredit, setCustomerCredit] = useState<{
     limitAmount: number;
     currentBalance: number;
@@ -150,21 +182,37 @@ export default function POSPage() {
     );
   }, [products, debouncedSearchQuery]);
 
+  /** Unidades de combo vendibles según stock de componentes (licores, etc.). */
+  const bundleSellableUnits = useCallback(
+    (product: Product): number => {
+      if (!product.isBundle || !product.bundleComponents?.length) return product.stock;
+      let min = Infinity;
+      for (const comp of product.bundleComponents) {
+        const child = products.find((p) => p.id === comp.productId);
+        if (!child) return 0;
+        const per = Math.max(1, comp.quantity ?? 1);
+        min = Math.min(min, Math.floor(child.stock / per));
+      }
+      return min === Infinity ? 0 : min;
+    },
+    [products],
+  );
+
   // Agregar producto al carrito
   const addToCart = (product: Product) => {
     setCart((prevCart) => {
+      const maxQ = product.isBundle ? bundleSellableUnits(product) : product.stock;
       const existingItem = prevCart.find((item) => item.product.id === product.id);
       if (existingItem) {
-        // Si ya existe, incrementar cantidad
+        if (existingItem.quantity >= maxQ) return prevCart;
         return prevCart.map((item) =>
           item.product.id === product.id
             ? { ...item, quantity: item.quantity + 1 }
-            : item
+            : item,
         );
-      } else {
-        // Si no existe, agregar nuevo item
-        return [...prevCart, { product, quantity: 1 }];
       }
+      if (maxQ < 1) return prevCart;
+      return [...prevCart, { product, quantity: 1 }];
     });
   };
 
@@ -176,6 +224,10 @@ export default function POSPage() {
           if (item.product.id === productId) {
             const newQuantity = item.quantity + delta;
             if (newQuantity <= 0) return null;
+            const maxQ = item.product.isBundle
+              ? bundleSellableUnits(item.product)
+              : item.product.stock;
+            if (newQuantity > maxQ) return item;
             return { ...item, quantity: newQuantity };
           }
           return item;
@@ -199,6 +251,19 @@ export default function POSPage() {
     return { subtotal: subRounded, total: subRounded };
   }, [cart]);
 
+  /** Suma de líneas de pago combinado en equivalente USD (validación vs total). */
+  const splitEquivalentUsd = useMemo(() => {
+    let usd = 0;
+    let ves = 0;
+    for (const line of splitLines) {
+      const a = parseFloat(line.amount);
+      if (!Number.isFinite(a) || a <= 0) continue;
+      if (BS_PAYMENT_METHODS.includes(line.method)) ves += a;
+      else usd += a;
+    }
+    return round2(usd + ves / tasaBcv);
+  }, [splitLines, tasaBcv]);
+
   /** Precio unitario para mostrar (en moneda seleccionada: USD o Bs según tasa). */
   const getUnitPriceDisplay = (product: Product) => {
     const usd = Number(product.salePrice);
@@ -208,7 +273,28 @@ export default function POSPage() {
   // Procesar venta (online → API; offline → IndexedDB para sincronizar después)
   const handleCheckout = async () => {
     if (cart.length === 0) return;
-    if (paymentMethod === 'CREDIT') {
+
+    if (splitPayment) {
+      if (paymentMethod === 'CREDIT') {
+        toast.error('El crédito no se divide con otros medios en el mismo cobro. Desactive "Pago combinado".');
+        return;
+      }
+      let positiveLines = 0;
+      for (const line of splitLines) {
+        const a = parseFloat(line.amount);
+        if (Number.isFinite(a) && a > 0) positiveLines += 1;
+      }
+      if (positiveLines < 2) {
+        toast.error('En pago combinado indique al menos dos montos (o desactive la opción).');
+        return;
+      }
+      if (Math.abs(splitEquivalentUsd - total) > 0.02) {
+        toast.error(
+          `El total cobrado (${splitEquivalentUsd.toFixed(2)} USD eq.) debe igualar la venta (${total.toFixed(2)} USD).`,
+        );
+        return;
+      }
+    } else if (paymentMethod === 'CREDIT') {
       if (!selectedCustomerId) {
         toast.error('Seleccione un cliente para venta a crédito');
         return;
@@ -224,14 +310,41 @@ export default function POSPage() {
 
     const amountUsd = total;
     const amountBs = round2(total * tasaBcv);
-    const payments =
-      paymentMethod === 'CASH_BS' || paymentMethod === 'PAGO_MOVIL'
-        ? [{ method: paymentMethod, amount: amountBs, currency: 'VES' as const }]
-        : [{ method: paymentMethod, amount: amountUsd, currency: 'USD' as const }];
+
+    let payments: { method: PaymentMethod; amount: number; currency: 'USD' | 'VES' }[];
+    let paymentDetail: string | undefined;
+
+    if (splitPayment) {
+      payments = [];
+      for (const line of splitLines) {
+        const a = parseFloat(line.amount);
+        if (!Number.isFinite(a) || a <= 0) continue;
+        const isBs = BS_PAYMENT_METHODS.includes(line.method);
+        payments.push({
+          method: line.method,
+          amount: a,
+          currency: isBs ? 'VES' : 'USD',
+        });
+      }
+      paymentDetail = payments
+        .map((p) => {
+          const label = PAYMENT_LABELS[p.method];
+          if (p.currency === 'VES') {
+            return `${label}: ${new Intl.NumberFormat('es-VE', { style: 'currency', currency: 'VES' }).format(p.amount)}`;
+          }
+          return `${label}: ${new Intl.NumberFormat('es-VE', { style: 'currency', currency: 'USD' }).format(p.amount)}`;
+        })
+        .join('\n');
+    } else {
+      payments =
+        paymentMethod === 'CASH_BS' || paymentMethod === 'PAGO_MOVIL'
+          ? [{ method: paymentMethod, amount: amountBs, currency: 'VES' as const }]
+          : [{ method: paymentMethod, amount: amountUsd, currency: 'USD' as const }];
+    }
 
     const invoiceData = {
       customerId: selectedCustomerId || undefined,
-      paymentMethod: paymentMethod === 'CREDIT' ? 'CREDIT' : paymentMethod,
+      paymentMethod: splitPayment ? 'MIXED' : paymentMethod === 'CREDIT' ? 'CREDIT' : paymentMethod,
       payments,
       items: cart.map((item) => ({
         productId: item.product.id,
@@ -259,7 +372,8 @@ export default function POSPage() {
         totalUsd: amountUsd,
         totalBs: amountBs,
         currencyMode,
-        paymentMethod,
+        paymentMethod: splitPayment ? 'MIXED' : paymentMethod,
+        paymentDetail,
       };
 
       if (isOffline) {
@@ -273,7 +387,7 @@ export default function POSPage() {
         setCart([]);
         setSelectedCustomerId(null);
         setSuccess(true);
-        toast.info('Factura guardada localmente', {
+        toast.info('Venta guardada localmente', {
           description: 'Se enviará al servidor cuando haya conexión.',
         });
         setTimeout(() => setSuccess(false), 8000);
@@ -328,7 +442,7 @@ export default function POSPage() {
     }
     const facturaNum = lastTicket.consecutiveNumber ?? lastTicket.invoiceId;
     if (facturaNum != null) {
-      lines.push(`Factura #${facturaNum}`);
+      lines.push(`Venta #${facturaNum}`);
     }
     lines.push(`Fecha: ${lastTicket.createdAt}`);
     lines.push(`Cliente: ${lastTicket.customerName}`);
@@ -349,7 +463,12 @@ export default function POSPage() {
     lines.push(`TOTAL USD: ${formatCurrency(lastTicket.totalUsd, 'USD')}`);
     lines.push(`TOTAL Bs:  ${formatCurrency(lastTicket.totalBs, 'BS')}`);
     lines.push('');
-    lines.push(`Pago: ${lastTicket.paymentMethod}`);
+    if (lastTicket.paymentDetail) {
+      lines.push('Pago:');
+      lastTicket.paymentDetail.split('\n').forEach((ln) => lines.push(`  ${ln}`));
+    } else {
+      lines.push(`Pago: ${lastTicket.paymentMethod}`);
+    }
     lines.push('');
     lines.push('Gracias por su compra');
 
@@ -443,7 +562,7 @@ export default function POSPage() {
                         const link = document.createElement('a');
                         link.href = url;
                         link.target = '_blank';
-                        link.download = `factura-${lastInvoiceId}.pdf`;
+                        link.download = `venta-${lastInvoiceId}.pdf`;
                         document.body.appendChild(link);
                         link.click();
                         document.body.removeChild(link);
@@ -455,7 +574,7 @@ export default function POSPage() {
                     }}
                   >
                     <Printer className="mr-2 h-4 w-4" />
-                    Imprimir Factura
+                    PDF de la venta
                   </Button>
                 )}
               </div>
@@ -497,7 +616,10 @@ export default function POSPage() {
                       <Card
                         key={product.id}
                         className="cursor-pointer hover:border-primary transition-colors"
-                        onClick={() => product.stock > 0 && addToCart(product)}
+                        onClick={() =>
+                          (product.isBundle ? bundleSellableUnits(product) : product.stock) > 0 &&
+                          addToCart(product)
+                        }
                       >
                         <CardContent className="p-4">
                           <div className="flex items-center justify-center mb-2">
@@ -509,13 +631,19 @@ export default function POSPage() {
                               {formatCurrency(getUnitPriceDisplay(product))}
                             </span>
                             <Badge
-                              variant={product.stock > 0 ? 'default' : 'destructive'}
+                              variant={
+                                (product.isBundle ? bundleSellableUnits(product) : product.stock) > 0
+                                  ? 'default'
+                                  : 'destructive'
+                              }
                               className="text-xs"
                             >
-                              Stock: {product.stock}
+                              {product.isBundle
+                                ? `Combo: ${bundleSellableUnits(product)}`
+                                : `Stock: ${product.stock}`}
                             </Badge>
                           </div>
-                          {product.stock === 0 && (
+                          {(product.isBundle ? bundleSellableUnits(product) : product.stock) === 0 && (
                             <p className="text-xs text-destructive">Sin stock</p>
                           )}
                         </CardContent>
@@ -594,31 +722,120 @@ export default function POSPage() {
                 )}
               </div>
 
-              {/* Método de pago (Bs / $) */}
-              <div className="mb-4">
-                <Label className="block mb-2">Método de pago</Label>
-                <div className="flex flex-wrap gap-2">
-                  {(
-                    [
-                      { id: 'CASH_USD', label: 'Efectivo $' },
-                      { id: 'CASH_BS', label: 'Efectivo Bs' },
-                      { id: 'PAGO_MOVIL', label: 'Pago Móvil Bs' },
-                      { id: 'ZELLE', label: 'Zelle $' },
-                      { id: 'CARD', label: 'Tarjeta' },
-                      { id: 'CREDIT', label: 'Crédito' },
-                    ] as const
-                  ).map(({ id, label }) => (
-                    <Button
-                      key={id}
-                      type="button"
-                      variant={paymentMethod === id ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => setPaymentMethod(id)}
-                    >
-                      {label}
-                    </Button>
-                  ))}
+              {/* Modalidades de pago (Bs / $ / crédito o combinado) */}
+              <div className="mb-4 space-y-3">
+                <Label className="block text-sm font-medium">Modalidades de pago</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="split-pay" className="text-sm font-normal cursor-pointer leading-tight">
+                    Pago combinado (varios medios en un solo cobro)
+                  </Label>
+                  <Switch
+                    id="split-pay"
+                    checked={splitPayment}
+                    onCheckedChange={(v) => {
+                      setSplitPayment(v);
+                      if (v && paymentMethod === 'CREDIT') setPaymentMethod('CASH_USD');
+                    }}
+                  />
                 </div>
+
+                {splitPayment ? (
+                  <div className="rounded-lg border border-border p-3 space-y-2">
+                    <p className="text-xs text-muted-foreground">
+                      Indique cada monto en su moneda: USD para efectivo $, Zelle, tarjeta; Bs para efectivo Bs y
+                      Pago Móvil. La suma debe cuadrar con el total en USD (tasa {tasaBcv.toFixed(2)}).
+                    </p>
+                    {splitLines.map((line, idx) => (
+                      <div key={idx} className="flex flex-wrap gap-2 items-center">
+                        <select
+                          value={line.method}
+                          onChange={(e) => {
+                            const next = [...splitLines];
+                            next[idx] = { ...next[idx], method: e.target.value as PaymentMethod };
+                            setSplitLines(next);
+                          }}
+                          className="h-9 flex-1 min-w-[140px] rounded-md border border-input bg-background px-2 text-sm"
+                        >
+                          {(Object.keys(PAYMENT_LABELS) as PaymentMethod[])
+                            .filter((m) => m !== 'CREDIT')
+                            .map((m) => (
+                              <option key={m} value={m}>
+                                {PAYMENT_LABELS[m]}
+                              </option>
+                            ))}
+                        </select>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder={BS_PAYMENT_METHODS.includes(line.method) ? 'Monto Bs' : 'Monto USD'}
+                          className="h-9 w-32"
+                          value={line.amount}
+                          onChange={(e) => {
+                            const next = [...splitLines];
+                            next[idx] = { ...next[idx], amount: e.target.value };
+                            setSplitLines(next);
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 shrink-0"
+                          disabled={splitLines.length <= 2}
+                          onClick={() => setSplitLines((prev) => prev.filter((_, i) => i !== idx))}
+                          aria-label="Quitar línea"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      disabled={splitLines.length >= 6}
+                      onClick={() =>
+                        setSplitLines((prev) => [...prev, { method: 'ZELLE', amount: '' }])
+                      }
+                    >
+                      Añadir línea
+                    </Button>
+                    <p className="text-xs tabular-nums">
+                      Cobrado (equiv.):{' '}
+                      <span className="font-semibold">{splitEquivalentUsd.toFixed(2)} USD</span>
+                      {' · '}
+                      Venta: <span className="font-semibold">{total.toFixed(2)} USD</span>
+                      {Math.abs(splitEquivalentUsd - total) > 0.02 && (
+                        <span className="text-destructive ml-1">— debe coincidir</span>
+                      )}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {(
+                      [
+                        { id: 'CASH_USD', label: 'Efectivo $' },
+                        { id: 'CASH_BS', label: 'Efectivo Bs' },
+                        { id: 'PAGO_MOVIL', label: 'Pago Móvil Bs' },
+                        { id: 'ZELLE', label: 'Zelle $' },
+                        { id: 'CARD', label: 'Tarjeta' },
+                        { id: 'CREDIT', label: 'Crédito' },
+                      ] as const
+                    ).map(({ id, label }) => (
+                      <Button
+                        key={id}
+                        type="button"
+                        variant={paymentMethod === id ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setPaymentMethod(id)}
+                      >
+                        {label}
+                      </Button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Items del carrito */}
@@ -667,7 +884,12 @@ export default function POSPage() {
                               size="icon"
                               className="h-7 w-7"
                               onClick={() => updateQuantity(item.product.id, 1)}
-                              disabled={item.quantity >= item.product.stock}
+                              disabled={
+                                item.quantity >=
+                                (item.product.isBundle
+                                  ? bundleSellableUnits(item.product)
+                                  : item.product.stock)
+                              }
                             >
                               <Plus className="h-3 w-3" />
                             </Button>

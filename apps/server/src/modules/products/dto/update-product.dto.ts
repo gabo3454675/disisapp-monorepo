@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsNumber, IsPositive, Min, IsIn } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsPositive, Min, IsIn, IsBoolean } from 'class-validator';
 
 export class UpdateProductDto {
   @IsString()
@@ -37,4 +37,11 @@ export class UpdateProductDto {
   @Min(0)
   @IsOptional()
   minStock?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isBundle?: boolean;
+
+  @IsOptional()
+  bundleComponents?: unknown;
 }

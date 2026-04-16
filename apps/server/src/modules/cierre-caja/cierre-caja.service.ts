@@ -223,6 +223,45 @@ export class CierreCajaService {
   }
 
   /**
+   * Cierre automático (fin de día): concilia monto físico = esperado según ventas del turno.
+   * Usado por el programador a las 23:50 (America/Caracas).
+   */
+  async cerrarAutomaticoFinDia(tenantId: number, userId: number) {
+    const cierre = await this.prisma.cierreCaja.findFirst({
+      where: {
+        tenantId,
+        userId,
+        estado: 'OPEN',
+      },
+    });
+    if (!cierre) {
+      return null;
+    }
+
+    const ahora = new Date();
+    const desglose = await this.calcularMontosTurno(
+      tenantId,
+      userId,
+      cierre.fechaApertura,
+      ahora,
+    );
+
+    const montoInicial = Number(cierre.montoInicial);
+    const ventasEfectivoUsd = Number(cierre.ventasEfectivoUsd ?? 0) + desglose.ventasEfectivoUsd;
+    const ventasEfectivoBs = Number(cierre.ventasEfectivoBs ?? 0) + desglose.ventasEfectivoBs;
+    const ventasPagoMovil = Number(cierre.ventasPagoMovil ?? 0) + desglose.ventasPagoMovil;
+    const totalUsd = montoInicial + ventasEfectivoUsd;
+    const totalVes = ventasEfectivoBs + ventasPagoMovil;
+
+    return this.cerrar(tenantId, userId, {
+      montoFisicoUsd: totalUsd,
+      montoFisicoVes: totalVes,
+      observaciones:
+        'Cierre automático del sistema (23:50, hora Caracas). Monto físico declarado = total esperado según ventas registradas.',
+    });
+  }
+
+  /**
    * Resumen público por token (para QR). Sin autenticación.
    */
   async resumenByToken(token: string) {

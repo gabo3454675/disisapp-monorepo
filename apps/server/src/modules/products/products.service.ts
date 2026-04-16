@@ -61,9 +61,11 @@ export class ProductsService {
     // Obtener companyId correspondiente a la organización
     const companyId = await getCompanyIdFromOrganization(this.prisma, organizationId);
 
+    const { isBundle, bundleComponents, ...productRest } = createProductDto;
+
     return this.prisma.product.create({
       data: {
-        ...createProductDto,
+        ...productRest,
         companyId, // Requerido por el schema
         organizationId,
         imageUrl: imageUrl || null,
@@ -71,6 +73,13 @@ export class ProductsService {
         stock: createProductDto.stock ?? 0,
         minStock: createProductDto.minStock ?? 5,
         salePriceCurrency: createProductDto.salePriceCurrency ?? 'USD',
+        isBundle: isBundle ?? false,
+        bundleComponents:
+          isBundle && bundleComponents != null
+            ? (bundleComponents as object)
+            : isBundle
+              ? []
+              : undefined,
       },
     });
   }
@@ -140,7 +149,7 @@ export class ProductsService {
 
     const updated = await this.prisma.product.update({
       where: { id },
-      data: updateProductDto,
+      data: updateProductDto as any,
     });
 
     // Alertas: si el stock quedó por debajo del mínimo, notificar a Super Admins

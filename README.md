@@ -8,7 +8,9 @@ Monorepo para un sistema de facturación multi-empresa construido con tecnologí
 .
 ├── apps/
 │   ├── client/          # Frontend Next.js 14 (App Router)
-│   └── server/          # Backend NestJS (Clean Architecture)
+│   ├── mobile/          # App React Native (Expo)
+│   ├── server/          # Backend NestJS (Clean Architecture)
+│   └── disis-monolith/  # Modulo DISIS (dispatch/cliente/admin multi-tenant)
 ├── packages/
 │   └── shared/          # Tipos TypeScript compartidos
 ├── package.json         # Configuración raíz del monorepo
@@ -68,6 +70,16 @@ cd apps/server
 pnpm prisma generate
 pnpm prisma migrate dev
 ```
+
+5. **Configurar disis-monolith** (misma base de datos y mismo esquema Prisma que `apps/server`):
+```bash
+cd apps/server
+pnpm prisma migrate dev
+pnpm prisma generate
+cd ../disis-monolith
+pnpm prisma:generate
+```
+Copiar `apps/disis-monolith/.env.example` a `.env` y usar la misma `DATABASE_URL` que el servidor Nest (tablas `disis_*` viven en esa misma base).
 
 ## 🛠️ Scripts Disponibles
 

@@ -7,6 +7,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { LoginScreen } from '@/screens/LoginScreen';
 import { HomeScreen } from '@/screens/HomeScreen';
+import { ClientWalletScreen } from '@/screens/ClientWalletScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -35,11 +36,18 @@ function AppNavigator() {
       initialRouteName={isAuthenticated ? 'Home' : 'Login'}
     >
       {isAuthenticated ? (
-        <Stack.Screen
-          name="Home"
-          component={HomeScreen}
-          options={{ title: 'Disis' }}
-        />
+        <>
+          <Stack.Screen
+            name="Home"
+            component={HomeScreen}
+            options={{ title: 'Disis' }}
+          />
+          <Stack.Screen
+            name="ClientWallet"
+            component={ClientWalletScreen}
+            options={{ title: 'Monedero del Cliente' }}
+          />
+        </>
       ) : (
         <Stack.Screen
           name="Login"

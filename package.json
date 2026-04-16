@@ -10,7 +10,8 @@
     "lint": "pnpm --recursive lint",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "type-check": "pnpm --recursive type-check",
-    "clean": "pnpm --recursive clean"
+    "clean": "pnpm --recursive clean",
+    "smoke:prod": "node scripts/smoke-production.mjs"
   },
   "keywords": [
     "monorepo",

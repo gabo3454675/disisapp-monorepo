@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -56,6 +57,8 @@ interface Expense {
     id: number;
     name: string;
   };
+  amountPaid?: number;
+  balanceDue?: number;
 }
 
 interface Supplier {
@@ -86,7 +89,13 @@ interface ExpenseStats {
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
 
+interface CatalogProduct {
+  id: number;
+  name: string;
+}
+
 export default function ExpensesPage() {
+  const searchParams = useSearchParams();
   const { selectedCompanyId } = useAuthStore();
   const { canManageExpenses, canDelete } = usePermission();
   
@@ -103,6 +112,10 @@ export default function ExpensesPage() {
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState('expenses');
+  const [catalogProducts, setCatalogProducts] = useState<CatalogProduct[]>([]);
+  const [purchaseLines, setPurchaseLines] = useState<
+    { productId: string; quantity: string; unitCostUsd: string }[]
+  >([{ productId: '', quantity: '1', unitCostUsd: '' }]);
 
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const { formatForDisplay } = useDisplayCurrency();
@@ -115,6 +128,7 @@ export default function ExpensesPage() {
     status: 'PENDING' as 'PENDING' | 'PAID',
     supplierId: '',
     categoryId: '',
+    initialPayment: '',
   });
 
   const [supplierFormData, setSupplierFormData] = useState({
@@ -170,14 +184,43 @@ export default function ExpensesPage() {
     }
   }, [selectedCompanyId]);
 
+  const fetchCatalogProducts = useCallback(async () => {
+    if (!selectedCompanyId) return;
+    try {
+      const res = await apiClient.get<CatalogProduct[]>('/products');
+      setCatalogProducts(res.data);
+    } catch {
+      setCatalogProducts([]);
+    }
+  }, [selectedCompanyId]);
+
   useEffect(() => {
     if (selectedCompanyId && canManageExpenses) {
       setLoading(true);
-      Promise.all([fetchExpenses(), fetchSuppliers(), fetchCategories(), fetchStats()]).finally(() => {
+      Promise.all([
+        fetchExpenses(),
+        fetchSuppliers(),
+        fetchCategories(),
+        fetchStats(),
+        fetchCatalogProducts(),
+      ]).finally(() => {
         setLoading(false);
       });
     }
-  }, [selectedCompanyId, canManageExpenses, fetchExpenses, fetchSuppliers, fetchCategories, fetchStats]);
+  }, [
+    selectedCompanyId,
+    canManageExpenses,
+    fetchExpenses,
+    fetchSuppliers,
+    fetchCategories,
+    fetchStats,
+    fetchCatalogProducts,
+  ]);
+
+  useEffect(() => {
+    const t = searchParams.get('tab');
+    if (t === 'suppliers') setActiveTab('suppliers');
+  }, [searchParams]);
 
   // useMemo debe estar antes del return condicional
   const filteredExpenses = useMemo(() => {
@@ -218,6 +261,7 @@ export default function ExpensesPage() {
         status: expense.status,
         supplierId: expense.supplier?.id.toString() || '',
         categoryId: expense.category.id.toString(),
+        initialPayment: '',
       });
     } else {
       setEditingExpense(null);
@@ -229,7 +273,9 @@ export default function ExpensesPage() {
         status: 'PENDING',
         supplierId: '',
         categoryId: '',
+        initialPayment: '',
       });
+      setPurchaseLines([{ productId: '', quantity: '1', unitCostUsd: '' }]);
     }
     setIsExpenseDialogOpen(true);
   };
@@ -247,7 +293,7 @@ export default function ExpensesPage() {
 
     setSubmitting(true);
     try {
-      const payload = {
+      const payload: Record<string, unknown> = {
         date: expenseFormData.date,
         amount: parseFloat(expenseFormData.amount),
         description: expenseFormData.description,
@@ -256,6 +302,23 @@ export default function ExpensesPage() {
         supplierId: expenseFormData.supplierId ? parseInt(expenseFormData.supplierId) : undefined,
         categoryId: parseInt(expenseFormData.categoryId),
       };
+
+      if (!editingExpense) {
+        const ip = parseFloat(expenseFormData.initialPayment);
+        if (Number.isFinite(ip) && ip > 0) {
+          payload.initialPayment = ip;
+        }
+        const lines = purchaseLines
+          .filter((l) => l.productId)
+          .map((l) => ({
+            productId: parseInt(l.productId, 10),
+            quantity: parseInt(l.quantity, 10) || 1,
+            unitCostUsd: l.unitCostUsd ? parseFloat(l.unitCostUsd) : undefined,
+          }));
+        if (lines.length > 0) {
+          payload.purchaseLines = lines;
+        }
+      }
 
       if (editingExpense) {
         await apiClient.patch(`/expenses/${editingExpense.id}`, payload);
@@ -481,6 +544,8 @@ export default function ExpensesPage() {
                           <TableHead>Descripción</TableHead>
                           <TableHead>Referencia</TableHead>
                           <TableHead>Monto</TableHead>
+                          <TableHead>Abonado</TableHead>
+                          <TableHead>Saldo</TableHead>
                           <TableHead>Estado</TableHead>
                           <TableHead>Acciones</TableHead>
                         </TableRow>
@@ -495,6 +560,12 @@ export default function ExpensesPage() {
                             <TableCell>{expense.referenceNumber || '-'}</TableCell>
                             <TableCell className="font-semibold">
                               {formatForDisplay(expense.amount)}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {formatForDisplay(expense.amountPaid ?? 0)}
+                            </TableCell>
+                            <TableCell className="text-sm text-amber-800 dark:text-amber-300">
+                              {formatForDisplay(expense.balanceDue ?? 0)}
                             </TableCell>
                             <TableCell>
                               <span
@@ -705,6 +776,96 @@ export default function ExpensesPage() {
                   placeholder="Descripción del gasto"
                 />
               </div>
+
+              {!editingExpense && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="initialPayment">Abono inicial (USD, opcional)</Label>
+                    <Input
+                      id="initialPayment"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={expenseFormData.initialPayment}
+                      onChange={(e) =>
+                        setExpenseFormData({ ...expenseFormData, initialPayment: e.target.value })
+                      }
+                      placeholder="0 — registrar pago al ingresar la factura de proveedor"
+                    />
+                  </div>
+                  <div className="rounded-lg border border-border p-3 space-y-2">
+                    <p className="text-sm font-medium">Cargar inventario desde factura de compra (opcional)</p>
+                    <p className="text-xs text-muted-foreground">
+                      Por cada línea se suma stock y se registra movimiento COMPRA. Use categoría acorde (p. ej.
+                      Inventario).
+                    </p>
+                    {purchaseLines.map((line, idx) => (
+                      <div key={idx} className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Producto</Label>
+                          <select
+                            className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                            value={line.productId}
+                            onChange={(e) => {
+                              const next = [...purchaseLines];
+                              next[idx] = { ...next[idx], productId: e.target.value };
+                              setPurchaseLines(next);
+                            }}
+                          >
+                            <option value="">—</option>
+                            {catalogProducts.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Cantidad</Label>
+                          <Input
+                            type="number"
+                            min="1"
+                            value={line.quantity}
+                            onChange={(e) => {
+                              const next = [...purchaseLines];
+                              next[idx] = { ...next[idx], quantity: e.target.value };
+                              setPurchaseLines(next);
+                            }}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Costo unit. USD</Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="opcional"
+                            value={line.unitCostUsd}
+                            onChange={(e) => {
+                              const next = [...purchaseLines];
+                              next[idx] = { ...next[idx], unitCostUsd: e.target.value };
+                              setPurchaseLines(next);
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setPurchaseLines((prev) => [
+                          ...prev,
+                          { productId: '', quantity: '1', unitCostUsd: '' },
+                        ])
+                      }
+                    >
+                      Añadir línea de compra
+                    </Button>
+                  </div>
+                </>
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor="status">Estado</Label>

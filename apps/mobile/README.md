@@ -23,6 +23,7 @@ App móvil del monorepo. Sesión persistente con **SecureStore**: no expira por 
    ```
 
    En dispositivo físico usa la IP de tu máquina, no `localhost`.
+   Para arrancar rápido, copia `apps/mobile/.env.example` a `.env` y ajusta IP/URLs.
 
 ## Sesión persistente
 

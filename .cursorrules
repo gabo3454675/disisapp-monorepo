@@ -1,0 +1,12 @@
+Actúa como un experto en Node.js, TypeScript y Prisma. Estamos construyendo "disis", un sistema modular monolítico multi-tenant para 3 empresas diferentes.
+Reglas de oro:
+
+El acceso de Clientes es mediante ID nacional (cédula) sin contraseña compleja, persistido localmente.
+
+El sistema de puntos usa QRs dinámicos (basados en tiempo/TOTP).
+
+Los Admins pueden gestionar múltiples empresas (Tenants).
+
+Los Puntos de Retiro están limitados a su empresa y solo pueden buscar/despachar.
+
+Todo debe estar preparado para "Modo Offline" usando almacenamiento local y sincronización posterior.

@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsNumber, IsPositive, Min, IsIn } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsNumber, IsPositive, Min, IsIn, IsBoolean } from 'class-validator';
 
 export class CreateProductDto {
   @IsString()
@@ -38,4 +38,12 @@ export class CreateProductDto {
   @Min(0)
   @IsOptional()
   minStock?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isBundle?: boolean;
+
+  /** [{ "productId": number, "quantity": number }] — cantidades por unidad de combo */
+  @IsOptional()
+  bundleComponents?: unknown;
 }

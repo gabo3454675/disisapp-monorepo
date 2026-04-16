@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import Image from 'next/image';
-import { ChevronLeft, Grid2x2, ShoppingCart, Box, ChevronDown, LogOut, Check, DollarSign, FileText, Users, Settings, Download, CreditCard, Car, PackageMinus, History, BarChart3, Wallet, AlertTriangle, TrendingUp } from 'lucide-react';
+import { ChevronLeft, Grid2x2, ShoppingCart, Box, ChevronDown, LogOut, Check, DollarSign, FileText, Users, Settings, Download, CreditCard, Car, PackageMinus, History, BarChart3, Wallet, AlertTriangle, TrendingUp, Truck, Landmark } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
@@ -36,6 +36,8 @@ const navigationItems = [
   { id: 'cierre-caja', label: 'Cierre de caja', icon: Wallet, href: '/cierre-caja', permission: 'canManageCustomers' },
   { id: 'credits', label: 'Cuentas por Cobrar', icon: CreditCard, href: '/credits', permission: 'canManageCustomers' },
   { id: 'expenses', label: 'Gastos', icon: DollarSign, href: '/expenses', permission: 'canManageExpenses' },
+  { id: 'suppliers', label: 'Proveedores', icon: Truck, href: '/suppliers', permission: 'canManageExpenses' },
+  { id: 'accounts-payable', label: 'Cuentas por pagar', icon: Landmark, href: '/accounts-payable', permission: 'canManageExpenses' },
   { id: 'alertas-stock', label: 'Alertas inventario', icon: AlertTriangle, href: '/alertas-stock', permission: 'canManageInventory' },
   { id: 'tasas', label: 'Tasas BCV / Diferencial', icon: TrendingUp, href: '/tasas', permission: 'canManageExpenses' },
   { id: 'inspections', label: 'Inspección vehículo', icon: Car, href: '/inspections', permission: 'canManageInventory' },
@@ -104,6 +106,8 @@ export default function Sidebar() {
     if (pathname.startsWith('/history')) return 'history';
     if (pathname.startsWith('/credits')) return 'credits';
     if (pathname.startsWith('/expenses')) return 'expenses';
+    if (pathname.startsWith('/suppliers')) return 'suppliers';
+    if (pathname.startsWith('/accounts-payable')) return 'accounts-payable';
     if (pathname.startsWith('/inspections')) return 'inspections';
     if (pathname.startsWith('/settings')) return 'settings';
     return 'dashboard';
@@ -434,7 +438,7 @@ export default function Sidebar() {
             </p>
             {navigationItems
               .filter((item) =>
-                ['customers', 'credits', 'expenses'].includes(item.id),
+                ['customers', 'credits', 'expenses', 'suppliers', 'accounts-payable'].includes(item.id),
               )
               .filter((item) =>
                 canShowNavItem(item as NavItem, permissions, { canSeeInspections }),

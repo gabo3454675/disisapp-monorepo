@@ -7,8 +7,12 @@ import {
   IsEnum,
   IsDateString,
   Min,
+  IsArray,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ExpenseStatus } from '@prisma/client';
+import { PurchaseLineDto } from './purchase-line.dto';
 
 export class CreateExpenseDto {
   @IsDateString()
@@ -39,4 +43,17 @@ export class CreateExpenseDto {
   @IsInt()
   @IsNotEmpty()
   categoryId: number;
+
+  /** Líneas de entrada de inventario (factura de compra): crea movimientos COMPRA y suma stock. */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PurchaseLineDto)
+  purchaseLines?: PurchaseLineDto[];
+
+  /** Abono inicial al registrar el gasto (cuentas por pagar). */
+  @IsOptional()
+  @IsNumber()
+  @Min(0.01)
+  initialPayment?: number;
 }

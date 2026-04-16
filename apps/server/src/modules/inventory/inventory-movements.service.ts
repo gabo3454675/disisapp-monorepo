@@ -2,7 +2,9 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@/common/prisma/prisma.service';
 import { ActivityLogService } from '@/modules/activity-log/activity-log.service';
 import { PushNotificationService } from '@/modules/notifications/push-notification.service';
@@ -21,6 +23,7 @@ function defaultConsumptionReason(type: MovementType): ConsumptionReason {
 export class InventoryMovementsService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly configService: ConfigService,
     private readonly activityLog: ActivityLogService,
     private readonly pushNotification: PushNotificationService,
   ) {}
@@ -34,8 +37,24 @@ export class InventoryMovementsService {
     organizationId: number;
     userId: number;
     dto: CreateMovementDto;
+    /** Cabecera `x-disis-dispatch-secret`; obligatoria si `dto.stockAlreadyAdjusted === true`. */
+    disisDispatchSecretHeader?: string;
   }) {
     const { organizationId, userId, dto } = params;
+
+    if (dto.stockAlreadyAdjusted === true) {
+      const expected = this.configService.get<string>('DISIS_DISPATCH_SHARED_SECRET')?.trim();
+      if (!expected) {
+        throw new BadRequestException(
+          'stockAlreadyAdjusted requiere configurar DISIS_DISPATCH_SHARED_SECRET en el servidor.',
+        );
+      }
+      if (params.disisDispatchSecretHeader !== expected) {
+        throw new ForbiddenException(
+          'Cabecera x-disis-dispatch-secret inválida o ausente para stockAlreadyAdjusted.',
+        );
+      }
+    }
 
     const product = await this.prisma.product.findFirst({
       where: {
@@ -51,7 +70,7 @@ export class InventoryMovementsService {
       );
     }
 
-    if (product.stock < dto.quantity) {
+    if (!dto.stockAlreadyAdjusted && product.stock < dto.quantity) {
       throw new BadRequestException(
         `Stock insuficiente. Disponible: ${product.stock}, solicitado: ${dto.quantity}. No se permite stock negativo.`,
       );
@@ -78,19 +97,22 @@ export class InventoryMovementsService {
         },
       });
 
-      await tx.product.update({
-        where: { id: dto.productId },
-        data: { stock: { decrement: dto.quantity } },
-      });
+      if (!dto.stockAlreadyAdjusted) {
+        await tx.product.update({
+          where: { id: dto.productId },
+          data: { stock: { decrement: dto.quantity } },
+        });
+      }
 
       const category = await this.getOrCreateAutoconsumoCategory(tx, organizationId, companyId);
+      const disisNote = dto.stockAlreadyAdjusted ? ' [stock ya descontado vía DISIS]' : '';
       await tx.expense.create({
         data: {
           companyId,
           organizationId,
           date: new Date(),
           amount: totalCost,
-          description: `Autoconsumo/Merma: ${product.name} x ${dto.quantity} (${dto.type})${dto.reason ? ` - ${dto.reason}` : ''}`,
+          description: `Autoconsumo/Merma: ${product.name} x ${dto.quantity} (${dto.type})${dto.reason ? ` - ${dto.reason}` : ''}${disisNote}`,
           status: 'PAID',
           categoryId: category.id,
           inventoryMovementId: movement.id,
