@@ -12,6 +12,7 @@ import { Public } from '@/common/decorators/public.decorator';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { CompletePasswordResetDto } from './dto/complete-password-reset.dto';
+import { RecoverPasswordDto } from './dto/recover-password.dto';
 import { SwitchOrganizationDto } from './dto/switch-organization.dto';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { ActiveUser } from '@/common/decorators/active-user.decorator';
@@ -39,6 +40,13 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async completePasswordReset(@Body() dto: CompletePasswordResetDto) {
     return this.authService.completePasswordReset(dto);
+  }
+
+  @Public()
+  @Post('recover-password')
+  @HttpCode(HttpStatus.OK)
+  async recoverPassword(@Body() dto: RecoverPasswordDto) {
+    return this.authService.recoverPassword(dto);
   }
 
   /**

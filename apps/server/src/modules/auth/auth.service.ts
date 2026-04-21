@@ -11,6 +11,7 @@ import * as bcrypt from 'bcryptjs';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { CompletePasswordResetDto } from './dto/complete-password-reset.dto';
+import { RecoverPasswordDto } from './dto/recover-password.dto';
 
 @Injectable()
 export class AuthService {
@@ -234,6 +235,51 @@ export class AuthService {
         organizations: validatedUser.organizations,
         companies: validatedUser.companies,
       },
+    };
+  }
+
+  /**
+   * Recuperación de contraseña dentro del sistema (sin email externo).
+   * Valida email + nombre completo para permitir restablecer la clave.
+   */
+  async recoverPassword(dto: RecoverPasswordDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        isActive: true,
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('No se pudo validar tu identidad');
+    }
+
+    if (user.isActive === false) {
+      throw new UnauthorizedException('Cuenta desactivada. Contacte al administrador.');
+    }
+
+    const storedName = (user.fullName ?? '').trim().toLowerCase();
+    const providedName = dto.fullName.trim().toLowerCase();
+    if (!storedName || storedName !== providedName) {
+      throw new UnauthorizedException('No se pudo validar tu identidad');
+    }
+
+    const saltRounds = 10;
+    const passwordHash = await bcrypt.hash(dto.newPassword, saltRounds);
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash,
+        requiresPasswordChange: false,
+      },
+    });
+
+    return {
+      message: 'Clave actualizada correctamente. Ya puedes iniciar sesión.',
     };
   }
 
