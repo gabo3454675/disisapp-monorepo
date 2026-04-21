@@ -163,6 +163,17 @@ function LoginForm() {
               </div>
               <div>
                 <Link 
+                  href="/recover-password" 
+                  className="text-sm text-muted-foreground hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors inline-flex items-center gap-1"
+                >
+                  ¿Olvidaste tu contraseña? Recupérala aquí
+                </Link>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Te pediremos tu correo y tu nombre exactamente como aparece en tu perfil.
+                </p>
+              </div>
+              <div>
+                <Link 
                   href="/reset-password" 
                   className="text-sm text-muted-foreground hover:text-amber-600 dark:hover:text-amber-400 transition-colors inline-flex items-center gap-1"
                 >

@@ -16,5 +16,6 @@ export type {
   LoginPayload,
   RegisterPayload,
   CompletePasswordResetPayload,
+  RecoverPasswordPayload,
   SwitchOrganizationResponse,
 } from './auth';

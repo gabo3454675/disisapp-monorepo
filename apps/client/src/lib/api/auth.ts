@@ -18,6 +18,12 @@ export interface CompletePasswordResetPayload {
   newPassword: string;
 }
 
+export interface RecoverPasswordPayload {
+  email: string;
+  fullName: string;
+  newPassword: string;
+}
+
 export interface SwitchOrganizationResponse {
   access_token: string;
   organizationId: number;
@@ -40,6 +46,11 @@ export const authService = {
   /** Completar cambio de contraseña (usuarios con clave temporal o desde perfil). */
   completePasswordReset(payload: CompletePasswordResetPayload): Promise<LoginResponse> {
     return apiClient.post<LoginResponse>('/auth/complete-password-reset', payload).then((res) => res.data);
+  },
+
+  /** Recuperación de contraseña dentro del sistema (sin correo externo). */
+  recoverPassword(payload: RecoverPasswordPayload): Promise<{ message: string }> {
+    return apiClient.post<{ message: string }>('/auth/recover-password', payload).then((res) => res.data);
   },
 
   /** Cambiar organización activa (nuevo JWT con organizationId). */
